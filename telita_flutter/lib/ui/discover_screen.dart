@@ -262,7 +262,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                               });
                             },
                             onKeyEvent: (node, event) {
-                              if (event is KeyDownEvent &&
+                              // Only intercept Enter to open the search field when it's not already focused.
+                              // If the TextField already has focus, let Enter pass through so onSubmitted fires.
+                              if (!_searchFocusNode.hasFocus &&
+                                  event is KeyDownEvent &&
                                   (event.logicalKey.keyLabel == 'Enter' ||
                                       event.logicalKey.keyLabel == 'Select')) {
                                 setState(() => _searchActive = true);
