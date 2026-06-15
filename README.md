@@ -13,8 +13,8 @@ Telita is a cross-platform, high-performance media player designed for seamless 
 *   **Stremio Addon Ecosystem**: Fully compatible with the Stremio addon architecture, allowing you to easily browse and stream community content.
 *   **Cloud Sync**: Automatically syncs your watch history, playlists, and profiles across devices.
 *   **Multi-Profile Support**: Create up to 5 individual user profiles under a single account.
-*   **Hardware Acceleration**: Uses native media players for smooth, battery-friendly playback.
-*   **Customizable UI**: Features a clean, dynamic interface with an OLED dark mode and advanced subtitle settings.
+*   **Stream Badges**: List key stream specfications in the stream list itself.
+*   **Customizable UI**: Features a clean, dynamic interface with an OLED dark mode and advanced subtitle settings. Fully customizable UI coming soon.
 
 ## Development Notes
 
