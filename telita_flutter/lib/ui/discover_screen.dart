@@ -209,13 +209,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                   begin: Alignment.centerRight,
                                   end: Alignment.centerLeft,
                                   colors: [
-                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0),
-                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.1),
-                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.8),
+                                    Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.0),
+                                    Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.1),
+                                    Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.8),
                                     Theme.of(context).scaffoldBackgroundColor,
                                     Theme.of(context).scaffoldBackgroundColor,
                                   ],
-                                  stops: const [0.0, 0.4, 0.7, 0.9, 1.0], // Reaches solid bg before container edge
+                                  stops: const [
+                                    0.0,
+                                    0.4,
+                                    0.7,
+                                    0.9,
+                                    1.0,
+                                  ], // Reaches solid bg before container edge
                                 ),
                               ),
                             ),
@@ -228,8 +240,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0),
-                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.8),
+                                    Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.0),
+                                    Theme.of(
+                                      context,
+                                    ).scaffoldBackgroundColor.withOpacity(0.8),
                                     Theme.of(context).scaffoldBackgroundColor,
                                   ],
                                   stops: const [0.0, 0.6, 1.0],
@@ -279,7 +295,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             },
                             child: Builder(
                               builder: (context) {
-                                final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+                                final isPortrait =
+                                    MediaQuery.of(context).orientation ==
+                                    Orientation.portrait;
                                 final authState = AuthService.instance.value;
                                 final bool isFocused =
                                     Focus.of(context).hasFocus ||
@@ -343,13 +361,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                           child: TextField(
                                             controller: _searchController,
                                             focusNode: _searchFocusNode,
-                                            readOnly: (Platform.isWindows || Platform.isMacOS || Platform.isLinux || isPortrait) ? false : !_searchActive,
+                                            readOnly:
+                                                (Platform.isWindows ||
+                                                    Platform.isMacOS ||
+                                                    Platform.isLinux ||
+                                                    isPortrait)
+                                                ? false
+                                                : !_searchActive,
                                             textInputAction:
                                                 TextInputAction.search,
                                             textAlignVertical:
                                                 TextAlignVertical.center,
                                             onTap: () {
-                                              setState(() => _searchActive = true);
+                                              setState(
+                                                () => _searchActive = true,
+                                              );
                                               _searchFocusNode.requestFocus();
                                             },
                                             onSubmitted: (value) {
@@ -370,11 +396,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                               hintText:
                                                   'Search movies, series across all addons...',
                                               hintStyle: TextStyle(
-                                                color: Colors.white
-                                                    .withOpacity(0.3),
+                                                color: Colors.white.withOpacity(
+                                                  0.3,
+                                                ),
                                               ),
                                               border: InputBorder.none,
-                                              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 12,
+                                                  ),
                                               isDense: true,
                                             ),
                                             onChanged: _onQueryChanged,
@@ -402,7 +432,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                 );
 
                                 Widget searchResult = content;
-                                if (!(Platform.isWindows || Platform.isMacOS || Platform.isLinux || isPortrait)) {
+                                if (!(Platform.isWindows ||
+                                    Platform.isMacOS ||
+                                    Platform.isLinux ||
+                                    isPortrait)) {
                                   searchResult = GestureDetector(
                                     onTap: () {
                                       setState(() => _searchActive = true);
@@ -418,9 +451,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                 if (isPortrait) {
                                   return Row(
                                     children: [
-                                      Image.asset('assets/logo.png', width: 28, height: 28, color: Colors.white70, colorBlendMode: BlendMode.srcIn),
+                                      Image.asset(
+                                        'assets/logo.png',
+                                        width: 28,
+                                        height: 28,
+                                        color: Colors.white70,
+                                        colorBlendMode: BlendMode.srcIn,
+                                      ),
                                       const SizedBox(width: 16),
-                                      Expanded(child: Center(child: searchResult)),
+                                      Expanded(
+                                        child: Center(child: searchResult),
+                                      ),
                                       const SizedBox(width: 16),
                                       InkWell(
                                         borderRadius: BorderRadius.circular(20),
@@ -428,18 +469,50 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                         child: CircleAvatar(
                                           radius: 16,
                                           backgroundColor: Colors.white24,
-                                          backgroundImage: authState.profile?.avatarUrl != null 
-                                              ? (authState.profile!.avatarUrl!.startsWith('http') 
-                                                  ? NetworkImage(authState.profile!.avatarUrl!) as ImageProvider
-                                                  : AssetImage('assets/pfps/${authState.profile!.avatarUrl!.split('/').last}'))
+                                          backgroundImage:
+                                              authState.profile?.avatarUrl !=
+                                                  null
+                                              ? (authState.profile!.avatarUrl!
+                                                        .startsWith('http')
+                                                    ? NetworkImage(
+                                                            authState
+                                                                .profile!
+                                                                .avatarUrl!,
+                                                          )
+                                                          as ImageProvider
+                                                    : AssetImage(
+                                                        'assets/pfps/${authState.profile!.avatarUrl!.split('/').last}',
+                                                      ))
                                               : null,
-                                          child: authState.profile?.avatarUrl == null
+                                          child:
+                                              authState.profile?.avatarUrl ==
+                                                  null
                                               ? (authState.isGuest
-                                                  ? const Icon(Icons.person_outline, color: Colors.white, size: 20)
-                                                  : Text(
-                                                      ((authState.profile?.name ?? authState.user?.email ?? 'ME').substring(0, 2)).toUpperCase(),
-                                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                                                    ))
+                                                    ? const Icon(
+                                                        Icons.person_outline,
+                                                        color: Colors.white,
+                                                        size: 20,
+                                                      )
+                                                    : Text(
+                                                        ((authState
+                                                                        .profile
+                                                                        ?.name ??
+                                                                    authState
+                                                                        .user
+                                                                        ?.email ??
+                                                                    'ME')
+                                                                .substring(
+                                                                  0,
+                                                                  2,
+                                                                ))
+                                                            .toUpperCase(),
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ))
                                               : null,
                                         ),
                                       ),
