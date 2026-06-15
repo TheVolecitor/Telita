@@ -1,10 +1,28 @@
 <div align="center">
-  <img src="telita_logo.png" alt="Telita Logo" width="200" />
+  <h1>
+    <img src="telita_logo.png" alt="Telita Logo" width="120" align="center" />
+    &nbsp;Telita
+  </h1>
+
+  <b>A Cross-Platform Media Player Built for Performance!</b>
+  <br/><br/>
+  
+  Offering a native player, torrent/p2p streaming, multi-profiles, and cloud sync. Built to deliver a consistent and premium media experience across desktop, mobile, and televisions.
+  
+  <br/><br/>
+
+  <p>
+    <img src="https://img.shields.io/badge/FLUTTER-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
+    <img src="https://img.shields.io/badge/DART-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart" />
+    <img src="https://img.shields.io/badge/GO-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />
+    <img src="https://img.shields.io/badge/LICENSE-MIT-yellow?style=flat-square" alt="License" />
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/WINDOWS-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
+    <img src="https://img.shields.io/badge/ANDROID-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android" />
+    <img src="https://img.shields.io/badge/ANDROID_TV-073042?style=flat-square&logo=android&logoColor=white" alt="Android TV" />
+  </p>
 </div>
-
-# Telita
-
-Telita is a cross-platform, high-performance media player designed for seamless streaming and robust local playback. Built with a Flutter frontend and a high-performance Go core, it delivers a consistent and premium media experience across desktop mobile and televisions.
 
 ## Features
 
@@ -13,8 +31,8 @@ Telita is a cross-platform, high-performance media player designed for seamless 
 *   **Stremio Addon Ecosystem**: Fully compatible with the Stremio addon architecture, allowing you to easily browse and stream community content.
 *   **Cloud Sync**: Automatically syncs your watch history, playlists, and profiles across devices.
 *   **Multi-Profile Support**: Create up to 5 individual user profiles under a single account.
-*   **Hardware Acceleration**: Uses native media players for smooth, battery-friendly playback.
-*   **Customizable UI**: Features a clean, dynamic interface with an OLED dark mode and advanced subtitle settings.
+*   **Stream Badges**: List key stream specfications in the stream list itself.
+*   **Customizable UI**: Features a clean, dynamic interface with an OLED dark mode and advanced subtitle settings. Fully customizable UI coming soon.
 
 ## Development Notes
 
