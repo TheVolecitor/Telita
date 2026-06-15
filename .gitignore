@@ -1,0 +1,32 @@
+# General
+.DS_Store
+.vscode/
+.idea/
+
+# Core (Go)
+core/*.exe
+core/*.so
+core/*.dll
+core/*.dylib
+core/bin/
+core/pkg/addon/test_data/
+
+# Flutter
+telita_flutter/.dart_tool/
+telita_flutter/build/
+telita_flutter/.flutter-plugins
+telita_flutter/.flutter-plugins-dependencies
+telita_flutter/*.log
+telita_flutter/*.tmp
+
+# Build scripts / PII
+core/*.ps1
+core/*.sh
+telita_flutter/*.ps1
+telita_flutter/*.sh
+
+# User-specific
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
