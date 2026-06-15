@@ -1,0 +1,5 @@
+coverage/
+media3_lib_builder.sh
+.idea/
+.dart_tool/
+screenshots/
