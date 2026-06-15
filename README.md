@@ -1,10 +1,29 @@
 <div align="center">
-  <img src="telita_logo.png" alt="Telita Logo" width="200" />
+  <h1>
+    <img src="telita_logo.png" alt="Telita Logo" width="60" style="vertical-align: middle; margin-right: 10px;" />
+    Telita
+  </h1>
+
+  <b>A Cross-Platform Stremio Client Built for Performance!</b>
+  <br/><br/>
+  
+  Offering a native player, torrent streaming, multi-profiles, cloud sync, hardware acceleration, and a customizable theme engine. Built to deliver a consistent and premium media experience across desktop, mobile, and televisions.
+  
+  <br/><br/>
+
+  <p>
+    <img src="https://img.shields.io/badge/FLUTTER-02569B?style=flat-square&logo=flutter&logoColor=white" alt="Flutter" />
+    <img src="https://img.shields.io/badge/DART-0175C2?style=flat-square&logo=dart&logoColor=white" alt="Dart" />
+    <img src="https://img.shields.io/badge/GO-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go" />
+    <img src="https://img.shields.io/badge/LICENSE-MIT-yellow?style=flat-square" alt="License" />
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/WINDOWS-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
+    <img src="https://img.shields.io/badge/ANDROID-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android" />
+    <img src="https://img.shields.io/badge/MAC_OS-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS" />
+    <img src="https://img.shields.io/badge/LINUX-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux" />
+  </p>
 </div>
-
-# Telita
-
-Telita is a cross-platform, high-performance media player designed for seamless streaming and robust local playback. Built with a Flutter frontend and a high-performance Go core, it delivers a consistent and premium media experience across desktop mobile and televisions.
 
 ## Features
 
