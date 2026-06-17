@@ -282,9 +282,21 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
   rm -rf "$FLATPAK_DIR"
   mkdir -p "$FLATPAK_DIR"
 
-  # Write Flatpak manifest
+  # Write the launcher wrapper as a real file to avoid JSON escaping issues
+  LAUNCHER="$OUT_DIR/telita-launcher.sh"
+  cat > "$LAUNCHER" << 'LAUNCHER_EOF'
+#!/bin/bash
+cd /app/bin
+./libcore &
+CORE_PID=$!
+trap "kill $CORE_PID 2>/dev/null" EXIT
+exec /app/bin/Telita "$@"
+LAUNCHER_EOF
+  chmod +x "$LAUNCHER"
+
+  # Write Flatpak manifest — reference launcher as a source file
   MANIFEST="$OUT_DIR/${APP_ID}.json"
-  cat > "$MANIFEST" <<EOF
+  cat > "$MANIFEST" << EOF
 {
   "app-id": "${APP_ID}",
   "runtime": "org.freedesktop.Platform",
@@ -312,8 +324,7 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
         "cp -r data /app/bin/data",
         "install -Dm644 telita.png /app/share/icons/hicolor/256x256/apps/${APP_ID}.png",
         "install -Dm644 telita.desktop /app/share/applications/${APP_ID}.desktop",
-        "printf '#!/bin/bash\\ncd /app/bin\\n./libcore &\\nCORE_PID=\$!\\ntrap \\\"kill \$CORE_PID 2>/dev/null\\\" EXIT\\nexec /app/bin/Telita \\\"\$@\\\"\\n' > /app/bin/telita",
-        "chmod +x /app/bin/telita"
+        "install -Dm755 telita-launcher.sh /app/bin/telita"
       ],
       "sources": [
         {
@@ -329,6 +340,11 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
           "type": "file",
           "path": "${DESKTOP_SRC}",
           "dest-filename": "telita.desktop"
+        },
+        {
+          "type": "file",
+          "path": "${LAUNCHER}",
+          "dest-filename": "telita-launcher.sh"
         }
       ]
     }
@@ -337,16 +353,6 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
 }
 EOF
 
-  # Write wrapper command
-  mkdir -p "$FLATPAK_DIR/files/bin"
-  cat > "$FLATPAK_DIR/telita-wrapper.sh" <<'WRAPPER'
-#!/bin/bash
-cd /app/bin
-./libcore &
-CORE_PID=$!
-trap "kill $CORE_PID 2>/dev/null" EXIT
-exec /app/bin/Telita "$@"
-WRAPPER
 
   # eu-strip (from elfutils) is required by this version of flatpak-builder
   if ! command -v eu-strip &>/dev/null; then
