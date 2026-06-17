@@ -54,7 +54,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if (Platform.isWindows) {
+    if ((Platform.isWindows || Platform.isLinux)) {
       _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
         if (mounted && FtvMedia3PlayerController().videoController == null) {
           setState(() => _loadingTimedOut = true);
@@ -62,11 +62,11 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!Platform.isWindows) {
+      if (!(Platform.isWindows || Platform.isLinux)) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
       try {
-        if (Platform.isWindows) {
+        if ((Platform.isWindows || Platform.isLinux)) {
           _overlayController = Media3UiController();
           _overlayController!.initForWindows(widget.playlist, widget.initialIndex);
           setState(() {});
@@ -78,7 +78,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       } catch (e) {
         if (mounted) {
           _showErrorSnackBar(context, e.toString());
-          if (Platform.isWindows) {
+          if ((Platform.isWindows || Platform.isLinux)) {
             setState(() => _loadingTimedOut = true);
           }
         }
@@ -103,7 +103,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused && mounted && !isClose && !Platform.isWindows) {
+    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux)) {
       isClose = true;
       Navigator.of(context).maybePop();
     }
@@ -133,7 +133,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   Widget build(BuildContext context) {
     // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
     // We just need a black background behind it while it loads.
-    if (Platform.isWindows) {
+    if ((Platform.isWindows || Platform.isLinux)) {
       final controller = FtvMedia3PlayerController().videoController;
       final player = FtvMedia3PlayerController().player;
       if (controller == null || player == null) {

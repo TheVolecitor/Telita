@@ -25,10 +25,11 @@ void main() async {
     MediaKit.ensureInitialized();
   }
 
-  if (Platform.isWindows) {
+  if (Platform.isWindows || Platform.isLinux) {
     try {
-      final coreProcess = await Process.start('libcore.exe', []);
-      print('[CORE] libcore.exe started with PID: ${coreProcess.pid}');
+      final executable = Platform.isWindows ? 'libcore.exe' : './libcore';
+      final coreProcess = await Process.start(executable, []);
+      print('[CORE] $executable started with PID: ${coreProcess.pid}');
 
       // Wait for core to be ready
       bool coreReady = false;

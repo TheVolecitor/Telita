@@ -60,8 +60,16 @@ Before building the Flutter application, you must compile the native core binari
    CGO_ENABLED=1 CC=$NDK_PATH/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android33-clang go build -buildmode=c-shared -ldflags="-s -w" -o libcore.so android.go
    ```
 
+#### Linux (libcore)
+1. Ensure you have Go 1.22 or higher installed.
+2. Navigate to the `core` directory.
+3. Build the standalone executable:
+   ```bash
+   go build -buildmode=exe -ldflags="-s -w" -o libcore main_standalone.go
+   ```
+
 ### Building the Flutter App
-Once the core binaries are placed in their respective directories (the root directory for Windows, and `android/app/src/main/jniLibs/arm64-v8a/` for Android), you can build the frontend.
+Once the core binaries are placed in their respective directories (the root directory for Windows, copied to the `build/linux/x64/release/bundle/` directory for Linux, and `android/app/src/main/jniLibs/arm64-v8a/` for Android), you can build the frontend.
 
 1. Navigate to the `telita_flutter` directory.
 2. Install dependencies:
@@ -72,6 +80,9 @@ Once the core binaries are placed in their respective directories (the root dire
    ```bash
    # For Windows
    flutter build windows
+
+   # For Linux
+   flutter build linux
 
    # For Android
    flutter build apk

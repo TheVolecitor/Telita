@@ -883,7 +883,7 @@ class FtvMedia3PlayerController {
 
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
-    if (Platform.isWindows) {
+    if ((Platform.isWindows || Platform.isLinux)) {
       if (_mediaKitPlayer != null) {
         await _mediaKitPlayer!.dispose();
         _mediaKitPlayer = null;
@@ -926,7 +926,7 @@ class FtvMedia3PlayerController {
       screenshotsEnable: _onScreenshotTaken != null,
     );
 
-    if (Platform.isWindows) {
+    if ((Platform.isWindows || Platform.isLinux)) {
       if (_mediaKitPlayer != null) {
         await _mediaKitPlayer!.dispose();
       }
@@ -1095,7 +1095,7 @@ class FtvMedia3PlayerController {
 
   /// Toggles the player between play and pause states.
   Future<void> playPause() async {
-    if (Platform.isWindows && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.playOrPause();
       return;
     }
@@ -1104,7 +1104,7 @@ class FtvMedia3PlayerController {
 
   /// Starts or resumes playback.
   Future<void> play() async {
-    if (Platform.isWindows && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.play();
       return;
     }
@@ -1113,7 +1113,7 @@ class FtvMedia3PlayerController {
 
   /// Pauses playback.
   Future<void> pause() async {
-    if (Platform.isWindows && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.pause();
       return;
     }
@@ -1124,7 +1124,7 @@ class FtvMedia3PlayerController {
   ///
   /// [positionSeconds] The position to seek to, in seconds.
   Future<void> seekTo({required int positionSeconds}) async {
-    if (Platform.isWindows && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.seek(Duration(seconds: positionSeconds));
       return;
     }
@@ -1241,7 +1241,7 @@ class FtvMedia3PlayerController {
 
   /// Stops playback and releases player resources.
   Future<void> stop() async {
-    if (Platform.isWindows && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
       if (_playbackState.position != null && _playbackState.duration != null) {
         // Sync watch history before disposing
         await _handleMethodCall(MethodCall('onWatchTimeMarked', {

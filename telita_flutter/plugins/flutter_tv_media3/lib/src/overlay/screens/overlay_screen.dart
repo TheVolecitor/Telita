@@ -434,7 +434,7 @@ class _OverlayScreenState extends State<OverlayScreen> {
         playerState.loadingStatus == null &&
         playerState.lastError == null;
 
-    if (Platform.isWindows) return false;
+    if ((Platform.isWindows || Platform.isLinux)) return false;
 
     return playerState.videoTracks.isEmpty && isPlayerStable;
   }
