@@ -346,7 +346,13 @@ trap "kill $CORE_PID 2>/dev/null" EXIT
 exec /app/bin/Telita "$@"
 WRAPPER
 
-  flatpak-builder --force-clean --disable-debuginfo --user-installation \
+  # eu-strip (from elfutils) is required by this version of flatpak-builder
+  if ! command -v eu-strip &>/dev/null; then
+    step "Installing elfutils (required by flatpak-builder for stripping)..."
+    sudo apt install -y elfutils || warn "Could not install elfutils — Flatpak may fail"
+  fi
+
+  flatpak-builder --force-clean --user-installation \
     --repo="$FLATPAK_REPO" "$FLATPAK_DIR" "$MANIFEST"
   flatpak build-bundle "$FLATPAK_REPO" "$FLATPAK_BUNDLE" "${APP_ID}"
   ok "Flatpak created: $FLATPAK_BUNDLE"
