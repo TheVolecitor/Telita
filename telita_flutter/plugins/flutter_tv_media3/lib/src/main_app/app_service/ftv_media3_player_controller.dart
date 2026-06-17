@@ -931,7 +931,12 @@ class FtvMedia3PlayerController {
         await _mediaKitPlayer!.dispose();
       }
       _mediaKitPlayer = media_kit.Player();
-      _videoController = media_kit_video.VideoController(_mediaKitPlayer!);
+      _videoController = media_kit_video.VideoController(
+        _mediaKitPlayer!,
+        configuration: media_kit_video.VideoControllerConfiguration(
+          enableHardwareAcceleration: !Platform.isLinux,
+        ),
+      );
 
       _mediaKitPlayer!.stream.position.listen((pos) {
         _updatePlaybackState(_playbackState.copyWith(position: pos.inSeconds));
