@@ -311,7 +311,9 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
         "cp -r lib /app/bin/lib",
         "cp -r data /app/bin/data",
         "install -Dm644 telita.png /app/share/icons/hicolor/256x256/apps/${APP_ID}.png",
-        "install -Dm644 telita.desktop /app/share/applications/${APP_ID}.desktop"
+        "install -Dm644 telita.desktop /app/share/applications/${APP_ID}.desktop",
+        "printf '#!/bin/bash\\ncd /app/bin\\n./libcore &\\nCORE_PID=\$!\\ntrap \\\"kill \$CORE_PID 2>/dev/null\\\" EXIT\\nexec /app/bin/Telita \\\"\$@\\\"\\n' > /app/bin/telita",
+        "chmod +x /app/bin/telita"
       ],
       "sources": [
         {
