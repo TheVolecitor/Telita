@@ -305,8 +305,6 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
     {
       "name": "telita",
       "buildsystem": "simple",
-      "no-debuginfo": true,
-      "no-debuginfo-compression": true,
       "build-commands": [
         "install -Dm755 Telita /app/bin/Telita",
         "install -Dm755 libcore /app/bin/libcore",
@@ -348,7 +346,8 @@ trap "kill $CORE_PID 2>/dev/null" EXIT
 exec /app/bin/Telita "$@"
 WRAPPER
 
-  flatpak-builder --force-clean --repo="$FLATPAK_REPO" "$FLATPAK_DIR" "$MANIFEST"
+  flatpak-builder --force-clean --disable-debuginfo --user-installation \
+    --repo="$FLATPAK_REPO" "$FLATPAK_DIR" "$MANIFEST"
   flatpak build-bundle "$FLATPAK_REPO" "$FLATPAK_BUNDLE" "${APP_ID}"
   ok "Flatpak created: $FLATPAK_BUNDLE"
 
