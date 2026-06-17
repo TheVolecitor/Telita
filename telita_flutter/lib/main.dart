@@ -277,13 +277,20 @@ class _AppContainerState extends State<AppContainer> {
               children: [
                 Builder(
                   builder: (context) {
-                    final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+                    final isPortrait =
+                        MediaQuery.of(context).orientation ==
+                        Orientation.portrait;
                     if (isPortrait) {
                       return Scaffold(
                         backgroundColor: Colors.transparent,
                         body: SafeArea(
                           child: ExcludeFocus(
-                            excluding: _showAuthScreen || needsAuth || _showProfileSelect || (authState.user != null && authState.profile == null),
+                            excluding:
+                                _showAuthScreen ||
+                                needsAuth ||
+                                _showProfileSelect ||
+                                (authState.user != null &&
+                                    authState.profile == null),
                             child: _buildMainContent(),
                           ),
                         ),
@@ -293,25 +300,39 @@ class _AppContainerState extends State<AppContainer> {
                             highlightColor: Colors.transparent,
                           ),
                           child: BottomNavigationBar(
-                            backgroundColor: Theme.of(context).colorScheme.surface,
-                          selectedItemColor: Colors.white,
-                          unselectedItemColor: Colors.white54,
-                          showSelectedLabels: false,
-                          showUnselectedLabels: false,
-                          type: BottomNavigationBarType.fixed,
-                          currentIndex: _currentScreen.index,
-                          onTap: (idx) {
-                            setState(() {
-                              _selectedDetailItem = null;
-                              _currentScreen = Screen.values[idx];
-                            });
-                          },
-                          items: const [
-                            BottomNavigationBarItem(icon: Icon(Icons.explore_outlined), activeIcon: Icon(Icons.explore), label: 'Discover'),
-                            BottomNavigationBarItem(icon: Icon(Icons.extension_outlined), activeIcon: Icon(Icons.extension), label: 'Addons'),
-                            BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), activeIcon: Icon(Icons.settings), label: 'Settings'),
-                          ],
-                        ),
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.surface,
+                            selectedItemColor: Colors.white,
+                            unselectedItemColor: Colors.white54,
+                            showSelectedLabels: false,
+                            showUnselectedLabels: false,
+                            type: BottomNavigationBarType.fixed,
+                            currentIndex: _currentScreen.index,
+                            onTap: (idx) {
+                              setState(() {
+                                _selectedDetailItem = null;
+                                _currentScreen = Screen.values[idx];
+                              });
+                            },
+                            items: const [
+                              BottomNavigationBarItem(
+                                icon: Icon(Icons.explore_outlined),
+                                activeIcon: Icon(Icons.explore),
+                                label: 'Discover',
+                              ),
+                              BottomNavigationBarItem(
+                                icon: Icon(Icons.extension_outlined),
+                                activeIcon: Icon(Icons.extension),
+                                label: 'Addons',
+                              ),
+                              BottomNavigationBarItem(
+                                icon: Icon(Icons.settings_outlined),
+                                activeIcon: Icon(Icons.settings),
+                                label: 'Settings',
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     }
@@ -336,12 +357,18 @@ class _AppContainerState extends State<AppContainer> {
                             });
                           },
                           isGuest: authState.isGuest,
-                          profileName: authState.profile?.name ?? authState.user?.email,
+                          profileName:
+                              authState.profile?.name ?? authState.user?.email,
                           avatarUrl: authState.profile?.avatarUrl,
                         ),
                         Expanded(
                           child: ExcludeFocus(
-                            excluding: _showAuthScreen || needsAuth || _showProfileSelect || (authState.user != null && authState.profile == null),
+                            excluding:
+                                _showAuthScreen ||
+                                needsAuth ||
+                                _showProfileSelect ||
+                                (authState.user != null &&
+                                    authState.profile == null),
                             child: _buildMainContent(),
                           ),
                         ),
@@ -461,7 +488,8 @@ class FadeIndexedStack extends StatefulWidget {
   State<FadeIndexedStack> createState() => _FadeIndexedStackState();
 }
 
-class _FadeIndexedStackState extends State<FadeIndexedStack> with SingleTickerProviderStateMixin {
+class _FadeIndexedStackState extends State<FadeIndexedStack>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -489,10 +517,7 @@ class _FadeIndexedStackState extends State<FadeIndexedStack> with SingleTickerPr
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _controller,
-      child: IndexedStack(
-        index: widget.index,
-        children: widget.children,
-      ),
+      child: IndexedStack(index: widget.index, children: widget.children),
     );
   }
 }

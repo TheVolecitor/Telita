@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Telita
+Comment=Stream movies and TV shows
+Exec=Telita
+Icon=telita
+Type=Application
+Categories=AudioVideo;Video;Player;
+Keywords=video;player;media;stream;torrent;
+StartupWMClass=Telita
