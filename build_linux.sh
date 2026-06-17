@@ -305,6 +305,8 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
     {
       "name": "telita",
       "buildsystem": "simple",
+      "no-debuginfo": true,
+      "no-debuginfo-compression": true,
       "build-commands": [
         "install -Dm755 Telita /app/bin/Telita",
         "install -Dm755 libcore /app/bin/libcore",
