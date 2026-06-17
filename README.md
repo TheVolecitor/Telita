@@ -7,7 +7,7 @@
   <b>A Cross-Platform Media Player Built for Performance!</b>
   <br/><br/>
   
-  Offering a native player, torrent/p2p streaming, multi-profiles, and cloud sync. Built to deliver a consistent and premium media experience across desktop, mobile, and televisions.
+  Offering a native player, torrent/p2p streaming, multi-profiles, and cloud sync. Built to deliver a consistent and premium media experience across desktop, mobile, televisions, and the web.
   
   <br/><br/>
 
@@ -24,13 +24,15 @@
   </p>
   <p>
     <img src="https://img.shields.io/badge/LINUX-.deb%20%7C%20AppImage%20%7C%20Flatpak-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux | .deb | AppImage | Flatpak" />
+    <a href="https://telitaweb.pages.dev/"><img src="https://img.shields.io/badge/WEB-Progressive_Web_App-4285F4?style=flat-square&logo=googlechrome&logoColor=white" alt="Web" /></a>
   </p>
 </div>
 
 ## Features
 
-*   **Cross-Platform Support**: Works seamlessly on Windows, Linux (x64), Android mobile, and Android TV.
-*   **Torrent Streaming**: Built-in Go backend for fast, on-the-fly peer-to-peer media streaming.
+*   **Cross-Platform Support**: Works seamlessly on Windows, Linux (x64), Android mobile, Android TV, and the Web.
+*   **Torrent Streaming**: Built-in Go backend for fast, on-the-fly peer-to-peer media streaming (desktop only).
+*   **Web Client**: A lightweight browser-based version with email auth and full browse/search. P2P streaming is not available on the web client.
 *   **Stremio Addon Ecosystem**: Fully compatible with the Stremio addon architecture, allowing you to easily browse and stream community content.
 *   **Cloud Sync**: Automatically syncs your watch history, playlists, and profiles across devices.
 *   **Multi-Profile Support**: Create up to 5 individual user profiles under a single account.
@@ -89,6 +91,9 @@ Once the core binaries are placed in their respective directories (the root dire
 
    # For Android
    flutter build apk
+
+   # For Web (no Go core needed)
+   flutter build web
    ```
 
 ## License
