@@ -49,7 +49,7 @@ Before building the Flutter application, you must compile the native core binari
 2. Navigate to the `core` directory.
 3. Build the executable:
    ```bash
-   go build -buildmode=exe -ldflags="-s -w" -o libcore.exe main_standalone.go
+   go build -ldflags="-s -w" -o libcore.exe .
    ```
 
 #### Android (libcore.so)
@@ -65,7 +65,7 @@ Before building the Flutter application, you must compile the native core binari
 2. Navigate to the `core` directory.
 3. Build the standalone executable:
    ```bash
-   go build -buildmode=exe -ldflags="-s -w" -o libcore main_standalone.go
+   go build -ldflags="-s -w" -o libcore .
    ```
 
 ### Building the Flutter App
