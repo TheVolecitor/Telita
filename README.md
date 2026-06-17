@@ -22,11 +22,14 @@
     <img src="https://img.shields.io/badge/ANDROID-3DDC84?style=flat-square&logo=android&logoColor=white" alt="Android" />
     <img src="https://img.shields.io/badge/ANDROID_TV-073042?style=flat-square&logo=android&logoColor=white" alt="Android TV" />
   </p>
+  <p>
+    <img src="https://img.shields.io/badge/LINUX-.deb%20%7C%20AppImage%20%7C%20Flatpak-FCC624?style=flat-square&logo=linux&logoColor=black" alt="Linux | .deb | AppImage | Flatpak" />
+  </p>
 </div>
 
 ## Features
 
-*   **Cross-Platform Support**: Works seamlessly on Windows, Android mobile, and Android TV.
+*   **Cross-Platform Support**: Works seamlessly on Windows, Linux (x64), Android mobile, and Android TV.
 *   **Torrent Streaming**: Built-in Go backend for fast, on-the-fly peer-to-peer media streaming.
 *   **Stremio Addon Ecosystem**: Fully compatible with the Stremio addon architecture, allowing you to easily browse and stream community content.
 *   **Cloud Sync**: Automatically syncs your watch history, playlists, and profiles across devices.
