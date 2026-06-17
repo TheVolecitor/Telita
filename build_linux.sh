@@ -282,14 +282,35 @@ if [[ "$HAVE_FLATPAK" == true ]]; then
   rm -rf "$FLATPAK_DIR"
   mkdir -p "$FLATPAK_DIR"
 
+  # Force resize icon to exactly 256x256 to match the Flatpak directory and enforce a perfect square
+  FLATPAK_ICON="$OUT_DIR/telita-256.png"
+  convert "$ICON_SRC" -resize 256x256\! "$FLATPAK_ICON"
+  ok "Icon forced to perfectly square 256x256 for Flatpak"
+
+  # Generate a Flatpak-specific .desktop file with Icon matching the app ID
+  FLATPAK_DESKTOP="$OUT_DIR/com.telita.app.desktop"
+  cat > "$FLATPAK_DESKTOP" << 'DESKTOP_EOF'
+[Desktop Entry]
+Name=Telita
+Comment=Stream movies and TV shows
+Exec=telita
+Icon=com.telita.app
+Type=Application
+Categories=AudioVideo;Video;Player;
+Keywords=video;player;media;stream;torrent;
+StartupWMClass=Telita
+DESKTOP_EOF
+
   # Write the launcher wrapper as a real file to avoid JSON escaping issues
   LAUNCHER="$OUT_DIR/telita-launcher.sh"
   cat > "$LAUNCHER" << 'LAUNCHER_EOF'
 #!/bin/bash
 cd /app/bin
-./libcore &
-CORE_PID=$!
-trap "kill $CORE_PID 2>/dev/null" EXIT
+if [ -f "./libcore" ]; then
+  ./libcore &
+  CORE_PID=$!
+  trap "kill $CORE_PID 2>/dev/null" EXIT
+fi
 exec /app/bin/Telita "$@"
 LAUNCHER_EOF
   chmod +x "$LAUNCHER"
@@ -333,12 +354,12 @@ LAUNCHER_EOF
         },
         {
           "type": "file",
-          "path": "${ICON_SRC}",
+          "path": "${FLATPAK_ICON}",
           "dest-filename": "telita.png"
         },
         {
           "type": "file",
-          "path": "${DESKTOP_SRC}",
+          "path": "${FLATPAK_DESKTOP}",
           "dest-filename": "telita.desktop"
         },
         {
@@ -352,7 +373,6 @@ LAUNCHER_EOF
   "cleanup": ["*.a", "*.la"]
 }
 EOF
-
 
   # eu-strip (from elfutils) is required by this version of flatpak-builder
   if ! command -v eu-strip &>/dev/null; then
