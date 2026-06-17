@@ -42,7 +42,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isLinux) {
       _isLoading = false;
     } else {
       _initDeviceAuth();
@@ -191,7 +191,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
               if (_isLoading)
                 const BrandLoadingIndicator(size: 60)
-              else if (_error.isNotEmpty && !Platform.isWindows)
+              else if (_error.isNotEmpty && !(Platform.isWindows || Platform.isLinux))
                 Column(
                   children: [
                     Text(_error, style: const TextStyle(color: Colors.redAccent, fontSize: 16)),
@@ -202,7 +202,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ],
                 )
-              else if (Platform.isWindows)
+              else if (Platform.isWindows || Platform.isLinux)
                 _buildWindowsForm()
               else
                 _buildQRForm(),
@@ -212,7 +212,7 @@ class _AuthScreenState extends State<AuthScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  autofocus: !Platform.isWindows,
+                  autofocus: !(Platform.isWindows || Platform.isLinux),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white24),
