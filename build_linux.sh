@@ -352,7 +352,7 @@ WRAPPER
     sudo apt install -y elfutils || warn "Could not install elfutils — Flatpak may fail"
   fi
 
-  flatpak-builder --force-clean --user-installation \
+  flatpak-builder --force-clean \
     --repo="$FLATPAK_REPO" "$FLATPAK_DIR" "$MANIFEST"
   flatpak build-bundle "$FLATPAK_REPO" "$FLATPAK_BUNDLE" "${APP_ID}"
   ok "Flatpak created: $FLATPAK_BUNDLE"
