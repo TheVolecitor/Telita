@@ -63,6 +63,33 @@ command -v flatpak-builder &>/dev/null || {
   HAVE_FLATPAK=false
 }
 
+# If flatpak-builder is available, ensure Flathub remote and runtime are present
+if [[ "$HAVE_FLATPAK" == true ]]; then
+  step "Ensuring Flatpak Flathub remote and runtime are available..."
+  # Add Flathub remote (for current user, no sudo needed)
+  flatpak remote-add --user --if-not-exists flathub \
+    https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+  # Also add system-wide if we have permission (best-effort)
+  sudo flatpak remote-add --if-not-exists flathub \
+    https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+
+  # Install the freedesktop runtime if not already present
+  RUNTIME_VERSION="23.08"
+  if ! flatpak info org.freedesktop.Platform//${RUNTIME_VERSION} &>/dev/null && \
+     ! flatpak info --user org.freedesktop.Platform//${RUNTIME_VERSION} &>/dev/null; then
+    step "Installing Flatpak runtime org.freedesktop.Platform//${RUNTIME_VERSION} (this may take a while)..."
+    flatpak install --user -y flathub \
+      org.freedesktop.Platform//${RUNTIME_VERSION} \
+      org.freedesktop.Sdk//${RUNTIME_VERSION} || {
+        warn "Could not install Flatpak runtime — Flatpak packaging will be skipped."
+        warn "Try manually: flatpak install flathub org.freedesktop.Platform//${RUNTIME_VERSION}"
+        HAVE_FLATPAK=false
+      }
+  else
+    ok "Flatpak runtime already installed"
+  fi
+fi
+
 mkdir -p "$OUT_DIR"
 
 # ─── Step 1: Build Go Core ───────────────────────────────────────────────────
