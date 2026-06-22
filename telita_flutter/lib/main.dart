@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
@@ -21,11 +22,11 @@ import 'package:media_kit/media_kit.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+  if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
     MediaKit.ensureInitialized();
   }
 
-  if (Platform.isWindows || Platform.isLinux) {
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
     try {
       final executable = Platform.isWindows ? 'libcore.exe' : './libcore';
       final coreProcess = await Process.start(executable, []);
@@ -58,6 +59,7 @@ void main() async {
 
   SettingsService.instance.init();
   AddonRegistry.instance.init();
+  await WatchHistory.instance.init();
   AuthService.instance.init();
 
   FtvMedia3PlayerController().setConfig(
@@ -232,7 +234,16 @@ class _AppContainerState extends State<AppContainer> {
                 '#${(cfg.subtitleBgOpacity * 2.55).round().toRadixString(16).padLeft(2, '0')}000000',
               )
             : ExtendedColors.transparent,
+        backgroundColor: cfg.subtitleBgOpacity > 0
+            ? ExtendedColors.fromHex(
+                '#${(cfg.subtitleBgOpacity * 2.55).round().toRadixString(16).padLeft(2, '0')}000000',
+              )
+            : ExtendedColors.transparent,
         edgeType: edgeType,
+        foregroundColor: BasicColors.fromHex(cfg.subtitleColor.replaceFirst('#', '#FF')),
+        fontFamily: cfg.subtitleFontFamily,
+        fontWeight: cfg.subtitleFontWeight,
+        positionPercentage: cfg.subtitlePosition,
       ),
       playerSettings: PlayerSettings(
         preferredTextLanguages: cfg.subtitleEnabled
@@ -241,6 +252,24 @@ class _AppContainerState extends State<AppContainer> {
         forcedAutoEnable: cfg.subtitleEnabled,
       ),
     );
+
+    final isDesktop = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+    if (isDesktop && cfg.defaultPlayer == 'vlc') {
+      Process.start('vlc', [url]).catchError((e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to launch VLC. Is it installed and in PATH?')));
+        return Process.start('echo', []);
+      });
+      return;
+    }
+
+    if (isDesktop && cfg.defaultPlayer == 'mpv') {
+      Process.start('mpv', [url]).catchError((e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to launch MPV. Is it installed and in PATH?')));
+        return Process.start('echo', []);
+      });
+      return;
+    }
 
     FtvMedia3PlayerController().openPlayer(
       context: context,
@@ -457,13 +486,17 @@ class _AppContainerState extends State<AppContainer> {
                 item: _selectedDetailItem!,
                 type: _selectedDetailType!,
                 onBack: () => setState(() => _selectedDetailItem = null),
-                onPlay: (url, type, id) => _playStream(
-                  context,
-                  url,
-                  type,
-                  id,
-                  item: _selectedDetailItem,
-                ),
+                onPlay: (url, type, id) {
+                  final watchEntry = WatchHistory.instance.get(id);
+                  _playStream(
+                    context,
+                    url,
+                    type,
+                    id,
+                    initialPosition: watchEntry?.timestamp,
+                    item: _selectedDetailItem,
+                  );
+                },
               ),
             ),
           ),

@@ -14,6 +14,9 @@ class AppSettings {
   bool rememberVolume;
   bool resumePrompt;
   String appTheme;
+  String subtitleFontFamily;
+  String subtitleFontWeight;
+  String defaultPlayer;
 
   AppSettings({
     this.subtitleEnabled = true,
@@ -28,6 +31,9 @@ class AppSettings {
     this.rememberVolume = true,
     this.resumePrompt = true,
     this.appTheme = 'default',
+    this.subtitleFontFamily = 'Arial',
+    this.subtitleFontWeight = 'normal',
+    this.defaultPlayer = 'native',
   });
 
   factory AppSettings.fromPrefs(SharedPreferences prefs) {
@@ -44,6 +50,9 @@ class AppSettings {
       rememberVolume: prefs.getBool('rememberVolume') ?? true,
       resumePrompt: prefs.getBool('resumePrompt') ?? true,
       appTheme: prefs.getString('appTheme') ?? 'default',
+      subtitleFontFamily: prefs.getString('subtitleFontFamily') ?? 'Arial',
+      subtitleFontWeight: prefs.getString('subtitleFontWeight') ?? 'normal',
+      defaultPlayer: prefs.getString('defaultPlayer') ?? 'native',
     );
   }
 
@@ -60,6 +69,9 @@ class AppSettings {
     prefs.setBool('rememberVolume', rememberVolume);
     prefs.setBool('resumePrompt', resumePrompt);
     prefs.setString('appTheme', appTheme);
+    prefs.setString('subtitleFontFamily', subtitleFontFamily);
+    prefs.setString('subtitleFontWeight', subtitleFontWeight);
+    prefs.setString('defaultPlayer', defaultPlayer);
   }
 }
 
@@ -88,6 +100,9 @@ class SettingsService extends ValueNotifier<AppSettings> {
     if (key == 'rememberVolume' && val is bool) current.rememberVolume = val;
     if (key == 'resumePrompt' && val is bool) current.resumePrompt = val;
     if (key == 'appTheme' && val is String) current.appTheme = val;
+    if (key == 'subtitleFontFamily' && val is String) current.subtitleFontFamily = val;
+    if (key == 'subtitleFontWeight' && val is String) current.subtitleFontWeight = val;
+    if (key == 'defaultPlayer' && val is String) current.defaultPlayer = val;
 
     current.save(prefs);
     value = current;

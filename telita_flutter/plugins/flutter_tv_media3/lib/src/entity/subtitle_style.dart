@@ -20,6 +20,9 @@ class SubtitleStyle {
     this.leftPadding,
     this.rightPadding,
     this.topPadding,
+    this.fontFamily,
+    this.fontWeight,
+    this.positionPercentage,
   });
 
   /// The main color of the subtitle text.
@@ -56,6 +59,15 @@ class SubtitleStyle {
   /// The top padding for the subtitle area.
   final int? topPadding;
 
+  /// The font family for the subtitles.
+  final String? fontFamily;
+
+  /// The font weight (e.g. normal, bold) for the subtitles.
+  final String? fontWeight;
+
+  /// The vertical position percentage (0-100) for the subtitles.
+  final int? positionPercentage;
+
   Map<String, dynamic> toMap() {
     return {
       'foregroundColor': foregroundColor?.hexString,
@@ -69,6 +81,9 @@ class SubtitleStyle {
       'leftPadding': leftPadding,
       'rightPadding': rightPadding,
       'topPadding': topPadding,
+      'fontFamily': fontFamily,
+      'fontWeight': fontWeight,
+      'positionPercentage': positionPercentage,
     };
   }
 
@@ -87,6 +102,9 @@ class SubtitleStyle {
       leftPadding: map['leftPadding'] as int?,
       rightPadding: map['rightPadding'] as int?,
       topPadding: map['topPadding'] as int?,
+      fontFamily: map['fontFamily'] as String?,
+      fontWeight: map['fontWeight'] as String?,
+      positionPercentage: map['positionPercentage'] as int?,
     );
   }
 
@@ -103,7 +121,10 @@ class SubtitleStyle {
       bottomPadding: $bottomPadding, 
       leftPadding: $leftPadding, 
       rightPadding: $rightPadding, 
-      topPadding: $topPadding
+      topPadding: $topPadding,
+      fontFamily: $fontFamily,
+      fontWeight: $fontWeight,
+      positionPercentage: $positionPercentage
     }''';
   }
 
@@ -119,6 +140,9 @@ class SubtitleStyle {
     int? leftPadding,
     int? rightPadding,
     int? topPadding,
+    String? fontFamily,
+    String? fontWeight,
+    int? positionPercentage,
   }) {
     return SubtitleStyle(
       foregroundColor: foregroundColor ?? this.foregroundColor,
@@ -132,6 +156,9 @@ class SubtitleStyle {
       leftPadding: leftPadding ?? this.leftPadding,
       rightPadding: rightPadding ?? this.rightPadding,
       topPadding: topPadding ?? this.topPadding,
+      fontFamily: fontFamily ?? this.fontFamily,
+      fontWeight: fontWeight ?? this.fontWeight,
+      positionPercentage: positionPercentage ?? this.positionPercentage,
     );
   }
 }

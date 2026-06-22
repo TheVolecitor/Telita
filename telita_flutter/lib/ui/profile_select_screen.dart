@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../core/auth.dart';
@@ -35,7 +36,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
         _error = '';
         _pinCtrl.clear();
       });
-      Future.delayed(const Duration(milliseconds: 100), () => _pinFocus.requestFocus());
+      Future.delayed(
+        const Duration(milliseconds: 100),
+        () => _pinFocus.requestFocus(),
+      );
     } else {
       AuthService.instance.selectProfile(profile).then((_) {
         widget.onDone();
@@ -50,7 +54,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
     }
 
     if (_selectedProfile != null) {
-      final success = await AuthService.instance.unlockProfile(_selectedProfile!.id, _pinCtrl.text);
+      final success = await AuthService.instance.unlockProfile(
+        _selectedProfile!.id,
+        _pinCtrl.text,
+      );
       if (success) {
         await AuthService.instance.selectProfile(_selectedProfile!);
         widget.onDone();
@@ -83,30 +90,30 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
         color: const Color(0xFF0F172A),
         child: Center(
           child: _showPinInput
-            ? _buildPinInput()
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Who's watching?",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
+              ? _buildPinInput()
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      "Who's watching?",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 48),
-                  Wrap(
-                    spacing: 32,
-                    runSpacing: 32,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      ...profiles.map((p) => _buildProfileAvatar(p)),
-                      if (profiles.length < 5) _buildAddProfile(),
-                    ],
-                  ),
-                ],
-              ),
+                    const SizedBox(height: 48),
+                    Wrap(
+                      spacing: 32,
+                      runSpacing: 32,
+                      alignment: WrapAlignment.center,
+                      children: [
+                        ...profiles.map((p) => _buildProfileAvatar(p)),
+                        if (profiles.length < 5) _buildAddProfile(),
+                      ],
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -142,7 +149,11 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
           const SizedBox(height: 16),
           const Text(
             'Add Profile',
-            style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
@@ -160,7 +171,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
           onKeyEvent: (node, event) {
             if (MediaQuery.of(context).viewInsets.bottom > 0) {
               if (event is KeyDownEvent || event is KeyRepeatEvent) {
-                if (event.logicalKey == LogicalKeyboardKey.arrowLeft || event.logicalKey == LogicalKeyboardKey.arrowRight || event.logicalKey == LogicalKeyboardKey.arrowUp || event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                    event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                    event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                    event.logicalKey == LogicalKeyboardKey.arrowDown) {
                   return KeyEventResult.skipRemainingHandlers;
                 }
               }
@@ -168,22 +182,27 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
             return KeyEventResult.ignored;
           },
           child: TextField(
-          autofocus: true,
-          controller: ctrl,
-          style: const TextStyle(color: Colors.white),
-          decoration: const InputDecoration(
-            hintText: 'Profile Name',
-            hintStyle: TextStyle(color: Colors.white54),
-          ),
+            autofocus: true,
+            controller: ctrl,
+            style: const TextStyle(color: Colors.white),
+            decoration: const InputDecoration(
+              hintText: 'Profile Name',
+              hintStyle: TextStyle(color: Colors.white54),
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6C63FF)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6C63FF),
+            ),
             onPressed: () async {
               if (ctrl.text.trim().isNotEmpty) {
                 Navigator.pop(context);
@@ -203,13 +222,19 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: Text('${profile.name} Options', style: const TextStyle(color: Colors.white)),
+          title: Text(
+            '${profile.name} Options',
+            style: const TextStyle(color: Colors.white),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const Icon(Icons.lock_outline, color: Colors.white),
-                title: Text(profile.hasPin == true ? 'Change PIN' : 'Set PIN', style: const TextStyle(color: Colors.white)),
+                title: Text(
+                  profile.hasPin == true ? 'Change PIN' : 'Set PIN',
+                  style: const TextStyle(color: Colors.white),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _changeProfilePin(profile);
@@ -217,19 +242,29 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
               ),
               if (profile.hasPin == true)
                 ListTile(
-                  leading: const Icon(Icons.lock_open_outlined, color: Colors.redAccent),
-                  title: const Text('Remove PIN', style: TextStyle(color: Colors.redAccent)),
+                  leading: const Icon(
+                    Icons.lock_open_outlined,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text(
+                    'Remove PIN',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     showDialog(
                       context: context,
-                      builder: (context) => _ChangePinDialog(profile: profile, isRemoving: true),
+                      builder: (context) =>
+                          _ChangePinDialog(profile: profile, isRemoving: true),
                     );
                   },
                 ),
               ListTile(
                 leading: const Icon(Icons.image_outlined, color: Colors.white),
-                title: const Text('Change Avatar', style: TextStyle(color: Colors.white)),
+                title: const Text(
+                  'Change Avatar',
+                  style: TextStyle(color: Colors.white),
+                ),
                 onTap: () {
                   Navigator.pop(context);
                   _changeAvatar(profile);
@@ -237,8 +272,14 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
               ),
               if (AuthService.instance.value.profiles.length > 1)
                 ListTile(
-                  leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                  title: const Text('Delete Profile', style: TextStyle(color: Colors.redAccent)),
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text(
+                    'Delete Profile',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     _confirmDeleteProfile(profile);
@@ -249,7 +290,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Close',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
           ],
         );
@@ -262,12 +306,21 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
-        title: const Text('Delete Profile', style: TextStyle(color: Colors.white)),
-        content: Text('Are you sure you want to delete ${profile.name}? This action cannot be undone.', style: const TextStyle(color: Colors.white70)),
+        title: const Text(
+          'Delete Profile',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Text(
+          'Are you sure you want to delete ${profile.name}? This action cannot be undone.',
+          style: const TextStyle(color: Colors.white70),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
@@ -288,7 +341,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
       builder: (context) {
         return AlertDialog(
           backgroundColor: const Color(0xFF1E293B),
-          title: const Text('Choose Avatar', style: TextStyle(color: Colors.white)),
+          title: const Text(
+            'Choose Avatar',
+            style: TextStyle(color: Colors.white),
+          ),
           content: SizedBox(
             width: 400,
             height: 300,
@@ -304,7 +360,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
                 return InkWell(
                   onTap: () async {
                     Navigator.pop(context);
-                    await AuthService.instance.updateProfile(profile.id, avatarUrl: avatarUrl);
+                    await AuthService.instance.updateProfile(
+                      profile.id,
+                      avatarUrl: avatarUrl,
+                    );
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: ClipRRect(
@@ -318,7 +377,10 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
           ],
         );
@@ -343,45 +405,50 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            "Enter PIN for ${_selectedProfile?.name}",
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          (Platform.isWindows || Platform.isMacOS || Platform.isLinux || MediaQuery.of(context).orientation == Orientation.portrait)
-            ? StandardPinInput(
-                controller: _pinCtrl,
-                onSubmitted: _submitPin,
-                onCancel: () {
-                  setState(() {
-                    _showPinInput = false;
-                    _error = '';
-                  });
-                },
-              )
-            : DPadPinInput(
-                controller: _pinCtrl,
-                onSubmitted: _submitPin,
-                onCancel: () {
-                  setState(() {
-                    _showPinInput = false;
-                    _error = '';
-                  });
-                },
+          children: [
+            Text(
+              "Enter PIN for ${_selectedProfile?.name}",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
-          if (_error.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(_error, style: const TextStyle(color: Colors.redAccent)),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            (kIsWeb ||
+                    (!kIsWeb &&
+                        (Platform.isWindows ||
+                            Platform.isMacOS ||
+                            Platform.isLinux)) ||
+                    MediaQuery.of(context).orientation == Orientation.portrait)
+                ? StandardPinInput(
+                    controller: _pinCtrl,
+                    onSubmitted: _submitPin,
+                    onCancel: () {
+                      setState(() {
+                        _showPinInput = false;
+                        _error = '';
+                      });
+                    },
+                  )
+                : DPadPinInput(
+                    controller: _pinCtrl,
+                    onSubmitted: _submitPin,
+                    onCancel: () {
+                      setState(() {
+                        _showPinInput = false;
+                        _error = '';
+                      });
+                    },
+                  ),
+            if (_error.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(_error, style: const TextStyle(color: Colors.redAccent)),
+            ],
           ],
-        ],
+        ),
       ),
-    ),
     );
   }
 }
@@ -391,7 +458,11 @@ class _ProfileAvatarButton extends StatefulWidget {
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
 
-  const _ProfileAvatarButton({required this.profile, required this.onTap, this.onLongPress});
+  const _ProfileAvatarButton({
+    required this.profile,
+    required this.onTap,
+    this.onLongPress,
+  });
 
   @override
   State<_ProfileAvatarButton> createState() => _ProfileAvatarButtonState();
@@ -436,7 +507,9 @@ class _ProfileAvatarButtonState extends State<_ProfileAvatarButton> {
               if (!hasFocus) _handleKeyUp();
             },
             onKeyEvent: (node, event) {
-              if (event.logicalKey == LogicalKeyboardKey.select || event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.space) {
+              if (event.logicalKey == LogicalKeyboardKey.select ||
+                  event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.space) {
                 if (event is KeyDownEvent) {
                   _handleKeyDown();
                   return KeyEventResult.handled;
@@ -453,47 +526,58 @@ class _ProfileAvatarButtonState extends State<_ProfileAvatarButton> {
               return KeyEventResult.ignored;
             },
             child: InkWell(
-            onHover: (hasHover) {
-              setState(() {
-                _isFocused = hasHover;
-              });
-            },
-            onTap: widget.onTap,
-            onLongPress: widget.onLongPress,
-            onSecondaryTap: widget.onLongPress,
-            borderRadius: BorderRadius.circular(60),
-            focusColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashColor: Colors.transparent,
-            child: AnimatedScale(
-              scale: _isFocused ? 1.05 : 1.0,
-              duration: const Duration(milliseconds: 200),
-              child: Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white12,
-                  border: Border.all(
-                    color: _isFocused ? Theme.of(context).colorScheme.primary : Colors.transparent,
-                    width: 3.0,
+              onHover: (hasHover) {
+                setState(() {
+                  _isFocused = hasHover;
+                });
+              },
+              onTap: widget.onTap,
+              onLongPress: widget.onLongPress,
+              onSecondaryTap: widget.onLongPress,
+              borderRadius: BorderRadius.circular(60),
+              focusColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+              highlightColor: Colors.transparent,
+              splashColor: Colors.transparent,
+              child: AnimatedScale(
+                scale: _isFocused ? 1.05 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white12,
+                    border: Border.all(
+                      color: _isFocused
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.transparent,
+                      width: 3.0,
+                    ),
+                    image: widget.profile.avatarUrl != null
+                        ? DecorationImage(
+                            image: widget.profile.avatarUrl!.startsWith('http')
+                                ? NetworkImage(widget.profile.avatarUrl!)
+                                      as ImageProvider
+                                : AssetImage(
+                                    widget.profile.avatarUrl!.startsWith('/')
+                                        ? 'assets${widget.profile.avatarUrl}'
+                                        : widget.profile.avatarUrl!,
+                                  ),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
                   ),
-                  image: widget.profile.avatarUrl != null
-                      ? DecorationImage(
-                          image: widget.profile.avatarUrl!.startsWith('http')
-                              ? NetworkImage(widget.profile.avatarUrl!) as ImageProvider
-                              : AssetImage(widget.profile.avatarUrl!),
-                          fit: BoxFit.cover,
+                  child: widget.profile.avatarUrl == null
+                      ? const Icon(
+                          Icons.person,
+                          size: 64,
+                          color: Colors.white54,
                         )
                       : null,
                 ),
-                child: widget.profile.avatarUrl == null
-                    ? const Icon(Icons.person, size: 64, color: Colors.white54)
-                    : null,
               ),
             ),
-          ),
           ),
           const SizedBox(height: 16),
           Text(
@@ -506,7 +590,11 @@ class _ProfileAvatarButtonState extends State<_ProfileAvatarButton> {
           ),
           if (widget.profile.hasPin == true) ...[
             const SizedBox(height: 8),
-            Icon(Icons.lock, size: 16, color: _isFocused ? Colors.white : Colors.white54),
+            Icon(
+              Icons.lock,
+              size: 16,
+              color: _isFocused ? Colors.white : Colors.white54,
+            ),
           ],
         ],
       ),
@@ -539,7 +627,10 @@ class DPadPinInput extends StatelessWidget {
 
   void _removeDigit() {
     if (controller.text.isNotEmpty) {
-      controller.text = controller.text.substring(0, controller.text.length - 1);
+      controller.text = controller.text.substring(
+        0,
+        controller.text.length - 1,
+      );
     }
   }
 
@@ -568,12 +659,21 @@ class DPadPinInput extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: Colors.black26,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: hasDigit ? const Color(0xFF6C63FF) : Colors.white24, width: 2),
+                        border: Border.all(
+                          color: hasDigit
+                              ? const Color(0xFF6C63FF)
+                              : Colors.white24,
+                          width: 2,
+                        ),
                       ),
                       child: Center(
                         child: Text(
                           hasDigit ? '•' : '',
-                          style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     );
@@ -590,7 +690,11 @@ class DPadPinInput extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(color: Colors.white12, width: 2),
                 boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 10, offset: const Offset(0, 4)),
+                  BoxShadow(
+                    color: Colors.black12,
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
               child: Column(
@@ -599,7 +703,11 @@ class DPadPinInput extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.gamepad, color: Colors.white54, size: 20),
+                      const Icon(
+                        Icons.gamepad,
+                        color: Colors.white54,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       const Text(
                         "D-PAD CONTROL",
@@ -617,11 +725,20 @@ class DPadPinInput extends StatelessWidget {
                     width: 280,
                     child: Column(
                       children: [
-                        _PinRow(labels: const ['1', '2', '3'], onInput: _addDigit),
-                        _PinRow(labels: const ['4', '5', '6'], onInput: _addDigit),
-                        _PinRow(labels: const ['7', '8', '9'], onInput: _addDigit),
                         _PinRow(
-                          labels: const ['Del', '0', 'Clear'], 
+                          labels: const ['1', '2', '3'],
+                          onInput: _addDigit,
+                        ),
+                        _PinRow(
+                          labels: const ['4', '5', '6'],
+                          onInput: _addDigit,
+                        ),
+                        _PinRow(
+                          labels: const ['7', '8', '9'],
+                          onInput: _addDigit,
+                        ),
+                        _PinRow(
+                          labels: const ['Del', '0', 'Clear'],
                           onInput: _addDigit,
                           onBackspace: _removeDigit,
                           onClear: () => controller.clear(),
@@ -645,7 +762,12 @@ class _PinRow extends StatefulWidget {
   final VoidCallback? onClear;
   final VoidCallback? onBackspace;
 
-  const _PinRow({required this.labels, required this.onInput, this.onClear, this.onBackspace});
+  const _PinRow({
+    required this.labels,
+    required this.onInput,
+    this.onClear,
+    this.onBackspace,
+  });
 
   @override
   State<_PinRow> createState() => _PinRowState();
@@ -656,9 +778,12 @@ class _PinRowState extends State<_PinRow> {
 
   void _handle(int index) {
     final label = widget.labels[index];
-    if (label == 'Del') widget.onBackspace?.call();
-    else if (label == 'Clear') widget.onClear?.call();
-    else widget.onInput(label);
+    if (label == 'Del')
+      widget.onBackspace?.call();
+    else if (label == 'Clear')
+      widget.onClear?.call();
+    else
+      widget.onInput(label);
   }
 
   @override
@@ -673,12 +798,16 @@ class _PinRowState extends State<_PinRow> {
           } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
             _handle(2);
             return KeyEventResult.handled;
-          } else if (event.logicalKey == LogicalKeyboardKey.select || event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.space) {
+          } else if (event.logicalKey == LogicalKeyboardKey.select ||
+              event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.space) {
             _handle(1);
             return KeyEventResult.handled;
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.labels[1] == '2') {
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+              widget.labels[1] == '2') {
             return KeyEventResult.handled;
-          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown && widget.labels[1] == '0') {
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+              widget.labels[1] == '0') {
             return KeyEventResult.handled;
           }
         }
@@ -688,8 +817,13 @@ class _PinRowState extends State<_PinRow> {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         decoration: BoxDecoration(
-          color: _isFocused ? const Color(0xFF6C63FF).withOpacity(0.15) : Colors.white.withOpacity(0.05),
-          border: Border.all(color: _isFocused ? const Color(0xFF6C63FF) : Colors.transparent, width: 2),
+          color: _isFocused
+              ? const Color(0xFF6C63FF).withOpacity(0.15)
+              : Colors.white.withOpacity(0.05),
+          border: Border.all(
+            color: _isFocused ? const Color(0xFF6C63FF) : Colors.transparent,
+            width: 2,
+          ),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -709,9 +843,20 @@ class _PinRowState extends State<_PinRow> {
     if (text == 'Del') icon = Icons.backspace_outlined;
     if (text == 'Clear') icon = Icons.clear;
 
-    Widget content = icon != null 
-      ? Icon(icon, color: _isFocused ? Colors.white : Colors.white70, size: 24)
-      : Text(text, style: TextStyle(color: _isFocused ? Colors.white : Colors.white70, fontSize: 24, fontWeight: FontWeight.bold));
+    Widget content = icon != null
+        ? Icon(
+            icon,
+            color: _isFocused ? Colors.white : Colors.white70,
+            size: 24,
+          )
+        : Text(
+            text,
+            style: TextStyle(
+              color: _isFocused ? Colors.white : Colors.white70,
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+          );
 
     return SizedBox(
       width: 76,
@@ -720,14 +865,28 @@ class _PinRowState extends State<_PinRow> {
         alignment: Alignment.center,
         children: [
           if (_isFocused && position == 1)
-             Icon(Icons.circle, color: const Color(0xFF6C63FF).withOpacity(0.5), size: 40),
-          
+            Icon(
+              Icons.circle,
+              color: const Color(0xFF6C63FF).withOpacity(0.5),
+              size: 40,
+            ),
+
           if (_isFocused && position == 0)
-             const Positioned(left: 0, child: Icon(Icons.arrow_left, color: Color(0xFF6C63FF), size: 24)),
-             
+            const Positioned(
+              left: 0,
+              child: Icon(Icons.arrow_left, color: Color(0xFF6C63FF), size: 24),
+            ),
+
           if (_isFocused && position == 2)
-             const Positioned(right: 0, child: Icon(Icons.arrow_right, color: Color(0xFF6C63FF), size: 24)),
-             
+            const Positioned(
+              right: 0,
+              child: Icon(
+                Icons.arrow_right,
+                color: Color(0xFF6C63FF),
+                size: 24,
+              ),
+            ),
+
           Center(child: content),
         ],
       ),
@@ -759,14 +918,21 @@ class _ChangePinDialogState extends State<_ChangePinDialog> {
     if (widget.isRemoving) {
       if (_curCtrl.text.length == 4) {
         Navigator.pop(context);
-        await AuthService.instance.updateProfile(widget.profile.id, currentPin: _curCtrl.text, pin: "");
+        await AuthService.instance.updateProfile(
+          widget.profile.id,
+          currentPin: _curCtrl.text,
+          pin: "",
+        );
       }
       return;
     }
 
     if (_step == 0) {
       if (_curCtrl.text.length == 4) {
-        setState(() { _step = 1; _error = ''; });
+        setState(() {
+          _step = 1;
+          _error = '';
+        });
       }
     } else {
       if (_newCtrl.text.length == 4) {
@@ -782,11 +948,11 @@ class _ChangePinDialogState extends State<_ChangePinDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.isRemoving 
-      ? 'Enter PIN to Remove'
-      : widget.profile.hasPin == true 
-          ? (_step == 0 ? 'Enter Current PIN' : 'Enter New PIN')
-          : 'Set New PIN';
+    final title = widget.isRemoving
+        ? 'Enter PIN to Remove'
+        : widget.profile.hasPin == true
+        ? (_step == 0 ? 'Enter Current PIN' : 'Enter New PIN')
+        : 'Set New PIN';
 
     return AlertDialog(
       backgroundColor: const Color(0xFF1E293B),
@@ -795,25 +961,33 @@ class _ChangePinDialogState extends State<_ChangePinDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            (Platform.isWindows || Platform.isMacOS || Platform.isLinux || MediaQuery.of(context).orientation == Orientation.portrait)
-              ? StandardPinInput(
-                  controller: _step == 0 ? _curCtrl : _newCtrl,
-                  onSubmitted: _submit,
-                  onCancel: () => Navigator.pop(context),
-                )
-              : DPadPinInput(
-                  controller: _step == 0 ? _curCtrl : _newCtrl,
-                  onSubmitted: _submit,
-                  onCancel: () => Navigator.pop(context),
-                ),
-            if (_error.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 16), child: Text(_error, style: const TextStyle(color: Colors.red))),
+            (kIsWeb ||
+                    (!kIsWeb &&
+                        (Platform.isWindows ||
+                            Platform.isMacOS ||
+                            Platform.isLinux)) ||
+                    MediaQuery.of(context).orientation == Orientation.portrait)
+                ? StandardPinInput(
+                    controller: _step == 0 ? _curCtrl : _newCtrl,
+                    onSubmitted: _submit,
+                    onCancel: () => Navigator.pop(context),
+                  )
+                : DPadPinInput(
+                    controller: _step == 0 ? _curCtrl : _newCtrl,
+                    onSubmitted: _submit,
+                    onCancel: () => Navigator.pop(context),
+                  ),
+            if (_error.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(_error, style: const TextStyle(color: Colors.red)),
+              ),
           ],
         ),
       ),
     );
   }
 }
-
 
 class StandardPinInput extends StatefulWidget {
   final TextEditingController controller;
@@ -874,7 +1048,11 @@ class _StandardPinInputState extends State<StandardPinInput> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(widget.maxLength, (index) {
                     final hasDigit = index < text.length;
-                    final isActive = _isFocused && (index == text.length || (index == widget.maxLength - 1 && text.length == widget.maxLength));
+                    final isActive =
+                        _isFocused &&
+                        (index == text.length ||
+                            (index == widget.maxLength - 1 &&
+                                text.length == widget.maxLength));
                     return Container(
                       margin: const EdgeInsets.symmetric(horizontal: 8),
                       width: 52,
@@ -883,7 +1061,9 @@ class _StandardPinInputState extends State<StandardPinInput> {
                         color: Colors.black26,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: hasDigit ? const Color(0xFF6C63FF) : (isActive ? Colors.white70 : Colors.white24),
+                          color: hasDigit
+                              ? const Color(0xFF6C63FF)
+                              : (isActive ? Colors.white70 : Colors.white24),
                           width: 2,
                         ),
                       ),

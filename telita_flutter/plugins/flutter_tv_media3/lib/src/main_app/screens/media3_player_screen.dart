@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import '../../../flutter_tv_media3.dart';
 import 'dart:io';
+import '../../utils/platform_utils.dart';
 import '../../overlay/media_ui_service/media3_ui_controller.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../overlay/bloc/overlay_ui_bloc.dart';
@@ -54,7 +55,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if ((Platform.isWindows || Platform.isLinux)) {
+    if (isDesktopOrWebPlayer) {
       _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
         if (mounted && FtvMedia3PlayerController().videoController == null) {
           setState(() => _loadingTimedOut = true);
@@ -62,13 +63,18 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!(Platform.isWindows || Platform.isLinux)) {
+      if (!isDesktopOrWebPlayer) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
       try {
-        if ((Platform.isWindows || Platform.isLinux)) {
+        if (isDesktopOrWebPlayer) {
           _overlayController = Media3UiController();
-          _overlayController!.initForWindows(widget.playlist, widget.initialIndex);
+          _overlayController!.initForWindows(
+            widget.playlist,
+            widget.initialIndex,
+            subtitleStyle: _controller.subtitleStyle,
+            playerSettings: _controller.currentPlayerSettings,
+          );
           setState(() {});
         }
         await _controller.openNativePlayer(
@@ -78,7 +84,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       } catch (e) {
         if (mounted) {
           _showErrorSnackBar(context, e.toString());
-          if ((Platform.isWindows || Platform.isLinux)) {
+          if (isDesktopOrWebPlayer) {
             setState(() => _loadingTimedOut = true);
           }
         }
@@ -103,7 +109,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux)) {
+    if (state == AppLifecycleState.paused && mounted && !isClose && !isDesktopOrWebPlayer) {
       isClose = true;
       Navigator.of(context).maybePop();
     }
@@ -133,7 +139,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   Widget build(BuildContext context) {
     // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
     // We just need a black background behind it while it loads.
-    if ((Platform.isWindows || Platform.isLinux)) {
+    if (isDesktopOrWebPlayer) {
       final controller = FtvMedia3PlayerController().videoController;
       final player = FtvMedia3PlayerController().player;
       if (controller == null || player == null) {
@@ -315,7 +321,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     widget.player.seek(next.isNegative ? Duration.zero : next);
   }
 
-  KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+  KeyEventResult _handleKey(BuildContext context, FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
@@ -336,15 +342,23 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       case LogicalKeyboardKey.arrowDown:
         widget.player.setVolume((widget.player.state.volume - 5).clamp(0, 100));
         return KeyEventResult.handled;
+      case LogicalKeyboardKey.f11:
+      case LogicalKeyboardKey.keyF:
+        toggleFullscreen(context);
+        return KeyEventResult.handled;
       case LogicalKeyboardKey.escape:
-        widget.onBack();
+        if (isFullscreen(context)) {
+          exitFullscreen(context);
+        } else {
+          widget.onBack();
+        }
         return KeyEventResult.handled;
       default:
         return KeyEventResult.ignored;
     }
   }
 
-  SubtitleViewConfiguration _buildSubtitleConfig(SubtitleStyle? style) {
+  SubtitleViewConfiguration _buildSubtitleConfig(BuildContext context, SubtitleStyle? style) {
     if (style == null) return const SubtitleViewConfiguration();
 
     final fgColor = style.foregroundColor?.color ?? Colors.white;
@@ -376,15 +390,25 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         break;
     }
 
+    final screenHeight = MediaQuery.of(context).size.height;
+    final posPct = style.positionPercentage ?? 85;
+    final baseBottomPadding = screenHeight * ((100 - posPct) / 100.0);
+
+    final isBold = style.fontWeight == 'bold' || style.fontWeight == 'bold_italic';
+    final isItalic = style.fontWeight == 'italic' || style.fontWeight == 'bold_italic';
+
     return SubtitleViewConfiguration(
       style: TextStyle(
         color: fgColor,
         fontSize: baseFontSize,
         backgroundColor: bgColor,
         shadows: shadows,
+        fontFamily: style.fontFamily,
+        fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+        fontStyle: isItalic ? FontStyle.italic : FontStyle.normal,
       ),
       padding: EdgeInsets.only(
-        bottom: (style.bottomPadding ?? 0).toDouble(),
+        bottom: baseBottomPadding,
         left: (style.leftPadding ?? 0).toDouble(),
         right: (style.rightPadding ?? 0).toDouble(),
         top: (style.topPadding ?? 0).toDouble(),
@@ -398,50 +422,51 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
       onHover: (_) => _onMouseActivity(),
       onEnter: (_) => _onMouseActivity(),
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: _handleKey,
-        child: Stack(
-          children: [
-            // Video fills the entire space with no built-in controls overlay.
-            Positioned.fill(
-              child: Video(
-                controller: widget.controller,
-                controls: NoVideoControls,
-                subtitleViewConfiguration: _buildSubtitleConfig(_subtitleStyle),
-              ),
-            ),
+      child: Video(
+        controller: widget.controller,
+        subtitleViewConfiguration: _buildSubtitleConfig(context, _subtitleStyle),
+        controls: (state) {
+          return Builder(
+            builder: (innerContext) {
+              return Focus(
+                autofocus: true,
+                onKeyEvent: (node, event) => _handleKey(innerContext, node, event),
+                child: Stack(
+              children: [
+                // Buffering indicator.
+                StreamBuilder<bool>(
+                  stream: widget.player.stream.buffering,
+                  builder: (context, snap) {
+                    final buffering = snap.data ?? false;
+                    return buffering
+                        ? const Center(
+                            child: BrandLoadingIndicator(
+                              size: 80,
+                              color: AppTheme.fullFocusColor,
+                            ),
+                          )
+                        : const SizedBox.shrink();
+                  },
+                ),
 
-            // Buffering indicator.
-            StreamBuilder<bool>(
-              stream: widget.player.stream.buffering,
-              builder: (context, snap) {
-                final buffering = snap.data ?? false;
-                return buffering
-                    ? const Center(
-                        child: BrandLoadingIndicator(
-                          size: 80,
-                          color: AppTheme.fullFocusColor,
-                        ),
-                      )
-                    : const SizedBox.shrink();
-              },
+                // Controls overlay — fades in/out on mouse activity.
+                AnimatedOpacity(
+                  opacity: _controlsVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: _ControlsOverlay(
+                    player: widget.player,
+                    playlist: widget.playlist,
+                    initialIndex: widget.initialIndex,
+                    onBack: widget.onBack,
+                    onActivity: _onMouseActivity,
+                  ),
+                ),
+              ],
             ),
-
-            // Controls overlay — fades in/out on mouse activity.
-            AnimatedOpacity(
-              opacity: _controlsVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: _ControlsOverlay(
-                player: widget.player,
-                playlist: widget.playlist,
-                initialIndex: widget.initialIndex,
-                onBack: widget.onBack,
-                onActivity: _onMouseActivity,
-              ),
-            ),
-          ],
-        ),
+          );
+            },
+          );
+        },
       ),
     );
   }
@@ -578,6 +603,14 @@ class _ControlsOverlay extends StatelessWidget {
                               player.setVolume(vol > 0 ? 0 : 100);
                             },
                           );
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.fullscreen, color: Colors.white),
+                        tooltip: 'Fullscreen',
+                        onPressed: () {
+                          onActivity();
+                          toggleFullscreen(context);
                         },
                       ),
                       PlayerMoreMenuButton(

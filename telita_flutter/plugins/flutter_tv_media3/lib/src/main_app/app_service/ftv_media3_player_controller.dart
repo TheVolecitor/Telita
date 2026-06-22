@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'dart:convert';
+import '../../utils/platform_utils.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -78,6 +79,12 @@ class FtvMedia3PlayerController {
     'app_player_plugin_activity',
   );
 
+  /// Listens to commands sent by the overlay UI on desktop (replaces the Android
+  /// activity layer that normally handles these on mobile/TV).
+  static const MethodChannel _desktopUiChannel = MethodChannel(
+    'ui_player_plugin_activity',
+  );
+
   /// Native Player instance for Windows
   media_kit.Player? _mediaKitPlayer;
 
@@ -106,6 +113,10 @@ class FtvMedia3PlayerController {
   Duration _directLinkTimeout = const Duration(seconds: 15);
   bool _isSearchingSubtitles = false;
   bool _isSavingWatchTime = false;
+
+  /// Periodic timer that fires every 30 s on desktop to save watch progress
+  /// (replaces the `onWatchTimeMarked` events that Android fires natively).
+  Timer? _desktopWatchTimer;
 
   /// Callback for pagination. Triggered when the current playIndex
   /// is close to the end of the playlist.
@@ -196,6 +207,13 @@ class FtvMedia3PlayerController {
   FtvMedia3PlayerController._internal() {
     _setMethodCallHandler(_handleMethodCall);
     _setPluginMethodCallHandler(_handleMethodCall);
+    if (isDesktopOrWebPlayer) {
+      // On desktop the overlay runs in the same Flutter engine, so its
+      // outbound channel ('ui_player_plugin_activity') has no Android Activity
+      // to receive it.  We intercept it here and apply changes to the MPV
+      // player directly.
+      _desktopUiChannel.setMethodCallHandler(_handleDesktopUiCall);
+    }
   }
 
   void setConfig({
@@ -259,7 +277,22 @@ class FtvMedia3PlayerController {
     _mediaMetadataController.close();
     _activityChannel.setMethodCallHandler(null);
     _pluginChannel.setMethodCallHandler(null);
+    if (isDesktopOrWebPlayer) {
+      _desktopUiChannel.setMethodCallHandler(null);
+    }
   }
+
+  // ─── Desktop-only getters ────────────────────────────────────────────────
+
+  /// The subtitle style currently configured for the player.
+  /// On desktop this is used to pre-populate the overlay UI and to apply
+  /// MPV properties when playback starts.
+  SubtitleStyle get subtitleStyle => _subtitleStyle;
+
+  /// The player settings currently configured.
+  /// On desktop this is used to pre-populate the overlay UI and to apply
+  /// MPV properties (e.g. `hwdec`) when playback starts.
+  PlayerSettings get currentPlayerSettings => _playerSettings;
 
   String _formatErrorMessage(dynamic error) {
     if (error is TimeoutException) {
@@ -883,12 +916,191 @@ class FtvMedia3PlayerController {
 
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
-    if ((Platform.isWindows || Platform.isLinux)) {
+    if (isDesktopOrWebPlayer) {
+      // Cancel the periodic watch-time timer and do a final save.
+      _desktopWatchTimer?.cancel();
+      _desktopWatchTimer = null;
+      await _saveDesktopWatchTime();
       if (_mediaKitPlayer != null) {
         await _mediaKitPlayer!.dispose();
         _mediaKitPlayer = null;
         _videoController = null;
       }
+    }
+  }
+
+  // ─── Desktop / MPV helpers ───────────────────────────────────────────────
+
+  /// Saves the current watch-time progress for the active playlist item on
+  /// desktop.  Mirrors what the Android `onWatchTimeMarked` event does.
+  Future<void> _saveDesktopWatchTime() async {
+    if (_isSavingWatchTime) return;
+    _isSavingWatchTime = true;
+    try {
+      final playlist = _playerState.playlist;
+      final index = _playerState.playIndex;
+      if (index < 0 || index >= playlist.length) return;
+      final item = playlist[index];
+      if (item.saveWatchTime == null) return;
+
+      final durationSec = _playbackState.duration;
+      int positionSec = _playbackState.position;
+      if (durationSec == 0 || positionSec <= 5) return;
+      if (positionSec > durationSec) positionSec = durationSec;
+
+      await item.saveWatchTime!(
+        id: item.id,
+        duration: durationSec,
+        position: positionSec,
+        playIndex: index,
+      );
+    } catch (_) {
+      // Silently ignore — never crash the player over a save failure.
+    } finally {
+      _isSavingWatchTime = false;
+    }
+  }
+
+  /// Handles method calls from the overlay UI channel on desktop.
+  ///
+  /// The overlay sends commands to `'ui_player_plugin_activity'` which normally
+  /// goes to the Android activity. On desktop we intercept them here and apply
+  /// the changes directly to the media_kit (MPV) player.
+  Future<dynamic> _handleDesktopUiCall(MethodCall call) async {
+    switch (call.method) {
+      case 'savePlayerSettings':
+        final map = call.arguments as Map<dynamic, dynamic>?;
+        final settings =
+            map != null ? PlayerSettings.fromMap(map) : PlayerSettings();
+        _playerSettings = settings;
+        await _applyPlayerSettingsToMpv();
+        _updateState(_playerState.copyWith(playerSettings: settings));
+        if (_savePlayerSettings != null) {
+          _savePlayerSettings!(playerSettings: settings);
+        }
+        break;
+
+      case 'setSubtitleStyle':
+        final map = call.arguments as Map<dynamic, dynamic>?;
+        if (map != null) {
+          final style = SubtitleStyle.fromMap(map);
+          _subtitleStyle = style;
+          await _applySubtitleStyleToMpv();
+          _updateState(_playerState.copyWith(subtitleStyle: style));
+          if (_saveSubtitleStyle != null) {
+            _saveSubtitleStyle!(subtitleStyle: style);
+          }
+        }
+        break;
+
+      case 'saveClockSettings':
+        final clockStr = call.arguments?['clock_settings'] as String?;
+        if (_saveClockSettings != null && clockStr != null) {
+          final clockSettings =
+              ClockSettings.fromMap(jsonDecode(clockStr));
+          _saveClockSettings!(clockSettings: clockSettings);
+        }
+        break;
+    }
+  }
+
+  /// Converts the app's `#AARRGGBB` color format to MPV's expected
+  /// `#RRGGBBAA` format.
+  String _toMpvColor(String? argbHex) {
+    if (argbHex == null || argbHex.isEmpty) return '#FFFFFFFF';
+    final hex = argbHex.startsWith('#') ? argbHex.substring(1) : argbHex;
+    if (hex.length == 8) {
+      final aa = hex.substring(0, 2);
+      final rrggbb = hex.substring(2);
+      return '#$rrggbb$aa';
+    }
+    return '#FFFFFFFF';
+  }
+
+  /// Applies the current [_subtitleStyle] to the live MPV player instance.
+  Future<void> _applySubtitleStyleToMpv() async {
+    if (_mediaKitPlayer == null) return;
+    try {
+      if (_mediaKitPlayer!.platform is! media_kit.NativePlayer) return;
+      final native = _mediaKitPlayer!.platform as media_kit.NativePlayer;
+      final s = _subtitleStyle;
+
+      await native.setProperty(
+          'sub-color', _toMpvColor(s.foregroundColor?.hexString));
+      await native.setProperty(
+          'sub-back-color', _toMpvColor(s.backgroundColor?.hexString));
+
+      final scale = s.textSizeFraction ?? 1.0;
+      await native.setProperty('sub-scale', scale.toString());
+
+      if (s.fontFamily != null && s.fontFamily!.isNotEmpty) {
+        await native.setProperty('sub-font', s.fontFamily!);
+      }
+      final isBold = s.fontWeight == 'bold' || s.fontWeight == 'bold_italic';
+      final isItalic = s.fontWeight == 'italic' || s.fontWeight == 'bold_italic';
+
+      if (isBold) {
+        await native.setProperty('sub-bold', 'yes');
+      } else {
+        await native.setProperty('sub-bold', 'no');
+      }
+
+      if (isItalic) {
+        await native.setProperty('sub-italic', 'yes');
+      } else {
+        await native.setProperty('sub-italic', 'no');
+      }
+
+      if (s.positionPercentage != null) {
+        await native.setProperty('sub-pos', s.positionPercentage!.toString());
+      }
+
+      final edgeColor = _toMpvColor(s.edgeColor?.hexString);
+      switch (s.edgeType) {
+        case SubtitleEdgeType.none:
+          await native.setProperty('sub-border-size', '0');
+          await native.setProperty('sub-shadow-offset', '0');
+          break;
+        case SubtitleEdgeType.outline:
+        case SubtitleEdgeType.raised:
+        case SubtitleEdgeType.depressed:
+          await native.setProperty('sub-border-size', '3');
+          await native.setProperty('sub-border-color', edgeColor);
+          await native.setProperty('sub-shadow-offset', '0');
+          break;
+        case SubtitleEdgeType.dropShadow:
+          await native.setProperty('sub-border-size', '1');
+          await native.setProperty('sub-shadow-offset', '2');
+          await native.setProperty('sub-shadow-color', edgeColor);
+          break;
+        default:
+          break;
+      }
+
+      final bottom = s.bottomPadding;
+      final left = s.leftPadding;
+      if (bottom != null) {
+        await native.setProperty('sub-margin-y', bottom.toString());
+      }
+      if (left != null) {
+        await native.setProperty('sub-margin-x', left.toString());
+      }
+    } catch (_) {
+      // Player may not be fully initialised yet; silently ignore.
+    }
+  }
+
+  /// Applies hardware-decoding and other player settings to the live MPV
+  /// player instance.
+  Future<void> _applyPlayerSettingsToMpv() async {
+    if (_mediaKitPlayer == null) return;
+    try {
+      if (_mediaKitPlayer!.platform is! media_kit.NativePlayer) return;
+      final native = _mediaKitPlayer!.platform as media_kit.NativePlayer;
+      await native.setProperty(
+          'hwdec', _playerSettings.hardwareDecoding.mpvValue);
+    } catch (_) {
+      // Silently ignore.
     }
   }
 
@@ -926,12 +1138,18 @@ class FtvMedia3PlayerController {
       screenshotsEnable: _onScreenshotTaken != null,
     );
 
-    if ((Platform.isWindows || Platform.isLinux)) {
+    if (isDesktopOrWebPlayer) {
       if (_mediaKitPlayer != null) {
         await _mediaKitPlayer!.dispose();
       }
       _mediaKitPlayer = media_kit.Player();
-      _videoController = media_kit_video.VideoController(_mediaKitPlayer!);
+      _videoController = media_kit_video.VideoController(
+        _mediaKitPlayer!,
+        configuration: media_kit_video.VideoControllerConfiguration(
+          enableHardwareAcceleration:
+              _playerSettings.hardwareDecoding != HardwareDecoding.disabled,
+        ),
+      );
 
       _mediaKitPlayer!.stream.position.listen((pos) {
         _updatePlaybackState(_playbackState.copyWith(position: pos.inSeconds));
@@ -942,8 +1160,42 @@ class FtvMedia3PlayerController {
       _mediaKitPlayer!.stream.playing.listen((playing) {
         _updateState(_playerState.copyWith(stateValue: playing ? StateValue.playing : StateValue.paused));
       });
+      _mediaKitPlayer!.stream.completed.listen((completed) {
+        if (completed) {
+          _updateState(_playerState.copyWith(stateValue: StateValue.ended));
+          _saveDesktopWatchTime(); // save on natural completion
+        }
+      });
 
-      await _mediaKitPlayer!.open(media_kit.Media(playlist[initialIndex].url));
+      // Periodic watch-time save (every 30 s while playing).
+      _desktopWatchTimer?.cancel();
+      _desktopWatchTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => _saveDesktopWatchTime(),
+      );
+
+      // Apply user-saved settings to the live MPV instance before opening the media.
+      await _applyPlayerSettingsToMpv();
+      await _applySubtitleStyleToMpv();
+
+      final startPos = playlist[initialIndex].startPosition;
+      await _mediaKitPlayer!.open(
+        media_kit.Media(playlist[initialIndex].url),
+        play: startPos == null || startPos <= 0,
+      );
+      if (startPos != null && startPos > 0) {
+        await _mediaKitPlayer!.seek(Duration(seconds: startPos));
+        await _mediaKitPlayer!.play();
+      }
+
+      // Push the initial settings into the state stream so the overlay UI
+      // (which reads from playerStateStream) is pre-populated correctly.
+      _updateState(
+        _playerState.copyWith(
+          subtitleStyle: _subtitleStyle,
+          playerSettings: _playerSettings,
+        ),
+      );
       return;
     }
 
@@ -1095,7 +1347,7 @@ class FtvMedia3PlayerController {
 
   /// Toggles the player between play and pause states.
   Future<void> playPause() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if (isDesktopOrWebPlayer && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.playOrPause();
       return;
     }
@@ -1104,7 +1356,7 @@ class FtvMedia3PlayerController {
 
   /// Starts or resumes playback.
   Future<void> play() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if (isDesktopOrWebPlayer && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.play();
       return;
     }
@@ -1113,7 +1365,7 @@ class FtvMedia3PlayerController {
 
   /// Pauses playback.
   Future<void> pause() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if (isDesktopOrWebPlayer && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.pause();
       return;
     }
@@ -1124,7 +1376,7 @@ class FtvMedia3PlayerController {
   ///
   /// [positionSeconds] The position to seek to, in seconds.
   Future<void> seekTo({required int positionSeconds}) async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if (isDesktopOrWebPlayer && _mediaKitPlayer != null) {
       await _mediaKitPlayer!.seek(Duration(seconds: positionSeconds));
       return;
     }
@@ -1241,7 +1493,7 @@ class FtvMedia3PlayerController {
 
   /// Stops playback and releases player resources.
   Future<void> stop() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if (isDesktopOrWebPlayer && _mediaKitPlayer != null) {
       if (_playbackState.position != null && _playbackState.duration != null) {
         // Sync watch history before disposing
         await _handleMethodCall(MethodCall('onWatchTimeMarked', {

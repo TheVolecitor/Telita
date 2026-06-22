@@ -88,6 +88,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       if (val != null) SettingsService.instance.set('subtitleLanguage', val);
                     },
                   ),
+                  _buildTVDropdown<String>(
+                    label: 'Font Family',
+                    value: cfg.subtitleFontFamily,
+                    items: const [
+                      DropdownMenuItem(value: 'Arial', child: Text('Arial')),
+                      DropdownMenuItem(value: 'Roboto', child: Text('Roboto')),
+                      DropdownMenuItem(value: 'Open Sans', child: Text('Open Sans')),
+                      DropdownMenuItem(value: 'Courier New', child: Text('Courier New')),
+                      DropdownMenuItem(value: 'Times New Roman', child: Text('Times New Roman')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) SettingsService.instance.set('subtitleFontFamily', val);
+                    },
+                  ),
+                  _buildTVDropdown<String>(
+                    label: 'Font Style',
+                    value: cfg.subtitleFontWeight,
+                    items: const [
+                      DropdownMenuItem(value: 'normal', child: Text('Normal')),
+                      DropdownMenuItem(value: 'bold', child: Text('Bold')),
+                      DropdownMenuItem(value: 'italic', child: Text('Italic')),
+                      DropdownMenuItem(value: 'bold_italic', child: Text('Bold Italic')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) SettingsService.instance.set('subtitleFontWeight', val);
+                    },
+                  ),
                   _buildSlider(
                     label: 'Font Size',
                     desc: 'Default size in pixels',
@@ -133,6 +160,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   // --- PLAYBACK ---
                   _buildSectionHeader(Icons.play_circle_outline, 'Playback'),
+                  _buildTVDropdown<String>(
+                    label: 'Default Player (Desktop)',
+                    desc: 'Choose player for desktop mode',
+                    value: cfg.defaultPlayer,
+                    items: const [
+                      DropdownMenuItem(value: 'native', child: Text('Internal (Native)')),
+                      DropdownMenuItem(value: 'vlc', child: Text('VLC Media Player')),
+                      DropdownMenuItem(value: 'mpv', child: Text('MPV')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) SettingsService.instance.set('defaultPlayer', val);
+                    },
+                  ),
                   _buildTVDropdown<String>(
                     label: 'Hardware Decoding',
                     desc: 'Use GPU for video decoding',
