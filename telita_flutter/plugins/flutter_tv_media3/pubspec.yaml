@@ -22,6 +22,8 @@ dependencies:
   sprintf: ^7.0.0
   visibility_detector: ^0.4.0+2
   lottie: ^3.3.3
+  fvp: ^0.37.3
+  video_player: ^2.11.1
 
 dev_dependencies:
   flutter_test:

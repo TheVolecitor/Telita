@@ -139,7 +139,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: cfg.hardwareDecoding,
                     items: const [
                       DropdownMenuItem(value: 'auto', child: Text('Auto (Recommended)')),
-                      DropdownMenuItem(value: 'yes', child: Text('Always On')),
+                      DropdownMenuItem(value: 'd3d11va', child: Text('Direct3D 11 (Zero-Copy)')),
+                      DropdownMenuItem(value: 'd3d11va-copy', child: Text('Direct3D 11 (Copy-Back)')),
+                      DropdownMenuItem(value: 'dxva2', child: Text('DXVA2 (Zero-Copy)')),
+                      DropdownMenuItem(value: 'dxva2-copy', child: Text('DXVA2 (Copy-Back)')),
                       DropdownMenuItem(value: 'no', child: Text('Disabled (CPU)')),
                     ],
                     onChanged: (val) {

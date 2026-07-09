@@ -239,6 +239,8 @@ class StreamModel {
   final String? infoHash;
   final int? fileIdx;
   final String? addonName;
+  final String? nzbUrl;
+  final List<String>? servers;
 
   StreamModel({
     this.name,
@@ -250,6 +252,8 @@ class StreamModel {
     this.infoHash,
     this.fileIdx,
     this.addonName,
+    this.nzbUrl,
+    this.servers,
   });
 
   factory StreamModel.fromJson(Map<String, dynamic> json, {String? addonName}) {
@@ -263,6 +267,8 @@ class StreamModel {
       infoHash: json['infoHash'],
       fileIdx: json['fileIdx'],
       addonName: addonName,
+      nzbUrl: json['nzbUrl'],
+      servers: json['servers'] != null ? List<String>.from(json['servers']) : null,
     );
   }
 }

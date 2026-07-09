@@ -16,18 +16,20 @@ import 'ui/splash_screen.dart';
 import 'dart:io';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:flutter_tv_media3/flutter_tv_media3.dart';
-
-import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as p;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-    MediaKit.ensureInitialized();
-  }
 
-  if (Platform.isWindows || Platform.isLinux) {
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     try {
-      final executable = Platform.isWindows ? 'libcore.exe' : './libcore';
+      String executable;
+      if (Platform.isMacOS) {
+        executable = p.join(p.dirname(Platform.resolvedExecutable), '..', 'Resources', 'libcore');
+      } else {
+        executable = Platform.isWindows ? 'libcore.exe' : './libcore';
+      }
+      
       final coreProcess = await Process.start(executable, []);
       print('[CORE] $executable started with PID: ${coreProcess.pid}');
 
@@ -125,8 +127,28 @@ class _AppContainerState extends State<AppContainer> {
     super.initState();
     AuthService.instance.addListener(_onAuthChanged);
 
+    // =========================================================
+    // EXTENSIVE MEDIA_KIT DEBUGGING
+    // =========================================================
     FtvMedia3PlayerController().playerStateStream.listen((state) {
+      final ts = DateTime.now().toIso8601String();
+      final stateVal = state.stateValue;
+      print(
+        ' [$ts][PLAYER] state=$stateVal | activityReady=${state.activityReady} | activityDestroyed=${state.activityDestroyed}',
+      );
+
+      // Print the current URL being played
+      if (state.playlist.isNotEmpty) {
+        print(' [$ts][PLAYER] url=${state.playlist.first.url}');
+      }
+
+      // Print volume state
+      print(
+        ' [$ts][PLAYER] volume=${state.volumeState?.volume} isMute=${state.volumeState?.isMute}',
+      );
+
       if (state.activityDestroyed) {
+        print('🛑 [$ts][PLAYER] Activity DESTROYED — stopping backend streams');
         _stopTorrents();
       }
     });
@@ -177,16 +199,50 @@ class _AppContainerState extends State<AppContainer> {
     MetaPreview? item,
     String? name,
     String? poster,
-  }) {
+  }) async {
     final mediaItemName =
         name ?? item?.name ?? _selectedDetailItem?.name ?? 'Unknown Content';
     final mediaItemPoster =
         poster ?? item?.poster ?? _selectedDetailItem?.poster;
 
+    final originalUrl = url;
+    print(' [PLAY] Requested stream: $originalUrl');
+
+    // Resolve 302 redirects before handing to media_kit.
+    // FFmpeg/libmpv silently drops the HTTP Range header when following a 302.
+    // This causes EBML header parsing failures on MKV streams.
+    try {
+      final request = await HttpClient()
+          .headUrl(Uri.parse(url))
+          .timeout(const Duration(seconds: 5));
+      request.followRedirects = false;
+      final response = await request.close();
+      print(' [PLAY] HEAD $url → HTTP ${response.statusCode}');
+      if (response.statusCode >= 300 && response.statusCode < 400) {
+        final location = response.headers.value('location');
+        if (location != null) {
+          url = location;
+          print(' [PLAY] Resolved redirect → $url');
+        } else {
+          print('⚠️ [PLAY] Got ${response.statusCode} but no Location header!');
+        }
+      } else if (response.statusCode != 200) {
+        print(
+          '⚠️ [PLAY] Unexpected HTTP ${response.statusCode} for HEAD request',
+        );
+      }
+    } catch (e, st) {
+      print('⚠️ [PLAY] HEAD request failed ($e), using original URL');
+      print('⚠️ [PLAY] Stacktrace: $st');
+    }
+
+    print(' [PLAY] Final URL passed to media_kit: $url');
+
     final mediaItems = [
       PlaylistMediaItem(
         id: id,
         url: url,
+        originalUrl: originalUrl,
         title: mediaItemName,
         coverImg: mediaItemPoster,
         mediaItemType: MediaItemType.video,
@@ -205,7 +261,7 @@ class _AppContainerState extends State<AppContainer> {
                     type: type,
                     name: mediaItemName,
                     poster: mediaItemPoster,
-                    streamUrl: url,
+                    streamUrl: originalUrl,
                     timestamp: position,
                     duration: duration,
                     updatedAt: DateTime.now().millisecondsSinceEpoch,
@@ -239,6 +295,7 @@ class _AppContainerState extends State<AppContainer> {
             ? [cfg.subtitleLanguage]
             : [],
         forcedAutoEnable: cfg.subtitleEnabled,
+        hardwareDecoding: cfg.hardwareDecoding,
       ),
     );
 

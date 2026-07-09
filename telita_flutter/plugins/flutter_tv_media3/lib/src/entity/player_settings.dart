@@ -27,6 +27,7 @@ class PlayerSettings {
     this.paginationThreshold = 5,
     this.paginationEnable = false,
     this.screenshotsEnable = false,
+    this.hardwareDecoding = 'auto',
   });
 
   /// The desired video quality. The player will try to select a stream
@@ -86,6 +87,9 @@ class PlayerSettings {
   /// Whether screenshot functionality is enabled.
   final bool screenshotsEnable;
 
+  /// Hardware decoding mode string (e.g. 'auto', 'd3d11va', 'no').
+  final String hardwareDecoding;
+
   Map<String, dynamic> toMap() {
     return {
       'videoQuality': videoQuality.index,
@@ -104,6 +108,7 @@ class PlayerSettings {
       'paginationThreshold': paginationThreshold,
       'paginationEnable': paginationEnable,
       'screenshotsEnable': screenshotsEnable,
+      'hardwareDecoding': hardwareDecoding,
     };
   }
 
@@ -133,6 +138,7 @@ class PlayerSettings {
       paginationThreshold: map['paginationThreshold'] as int? ?? 5,
       paginationEnable: map['paginationEnable'] as bool? ?? false,
       screenshotsEnable: map['screenshotsEnable'] as bool? ?? false,
+      hardwareDecoding: map['hardwareDecoding'] as String? ?? 'auto',
     );
   }
 
@@ -151,6 +157,7 @@ class PlayerSettings {
     bool? paginationEnable,
     bool? screenshotsEnable,
     Locale? deviceLocale,
+    String? hardwareDecoding,
   }) {
     return PlayerSettings(
       videoQuality: videoQuality ?? this.videoQuality,
@@ -175,6 +182,7 @@ class PlayerSettings {
       paginationEnable: paginationEnable ?? this.paginationEnable,
       screenshotsEnable: screenshotsEnable ?? this.screenshotsEnable,
       deviceLocale: deviceLocale ?? this.deviceLocale,
+      hardwareDecoding: hardwareDecoding ?? this.hardwareDecoding,
     );
   }
 
@@ -193,7 +201,8 @@ class PlayerSettings {
       stuckSuppressedDetectionTimeoutMs: $stuckSuppressedDetectionTimeoutMs,
       paginationThreshold: $paginationThreshold,
       paginationEnable: $paginationEnable,
-      screenshotsEnable: $screenshotsEnable
+      screenshotsEnable: $screenshotsEnable,
+      hardwareDecoding: $hardwareDecoding
     }''';
   }
 

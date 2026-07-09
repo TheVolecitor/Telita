@@ -53,6 +53,9 @@ class PlaylistMediaItem {
   /// or an indirect link that will be processed via [getDirectLink].
   final String url;
 
+  /// The original unmodified URL before any resolutions or redirects.
+  final String? originalUrl;
+
   /// A text label for this item, which can be used in the UI.
   final String? label;
 
@@ -144,6 +147,7 @@ class PlaylistMediaItem {
   PlaylistMediaItem({
     required this.id,
     required this.url,
+    this.originalUrl,
     this.label,
     this.title,
     this.subTitle,
@@ -176,6 +180,7 @@ class PlaylistMediaItem {
     return {
       'id': id,
       'url': url,
+      'originalUrl': originalUrl,
       'label': label,
       'title': title,
       'subTitle': subTitle,
@@ -206,6 +211,7 @@ class PlaylistMediaItem {
     return PlaylistMediaItem(
       id: json['id'] as String,
       url: json['url'] as String,
+      originalUrl: json['originalUrl'] as String?,
       label: json['label'] as String?,
       title: json['title'] as String?,
       subTitle: json['subTitle'] as String?,
@@ -255,6 +261,7 @@ class PlaylistMediaItem {
   PlaylistMediaItem copyWith({
     String? id,
     String? url,
+    String? originalUrl,
     String? label,
     String? title,
     String? subTitle,
@@ -284,6 +291,7 @@ class PlaylistMediaItem {
     return PlaylistMediaItem(
       id: id ?? this.id,
       url: url ?? this.url,
+      originalUrl: originalUrl ?? this.originalUrl,
       label: label ?? this.label,
       title: title ?? this.title,
       subTitle: subTitle ?? this.subTitle,
@@ -317,6 +325,7 @@ class PlaylistMediaItem {
     return '''PlaylistMediaItem(
       id: $id, 
       url: $url, 
+      originalUrl: $originalUrl, 
       label: $label, 
       title: $title, 
       subTitle: $subTitle, 

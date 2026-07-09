@@ -1,0 +1,11 @@
+HTTP/1.1 206 Partial Content
+Accept-Ranges: bytes
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+Access-Control-Allow-Origin: *
+Content-Disposition: inline; filename="ht.of.the.Living.Dead.1968.REMASTERED.1080p.BluRay.x265.mp4"
+Content-Length: 1000001
+Content-Range: bytes 0-1000000/1616466922
+Content-Type: video/mp4
+Date: Wed, 08 Jul 2026 12:15:58 GMT
+

@@ -5,8 +5,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart' as media_kit;
-import 'package:media_kit_video/media_kit_video.dart' as media_kit_video;
+import 'package:video_player/video_player.dart';
+import 'package:fvp/fvp.dart' as fvp;
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../../../flutter_tv_media3.dart';
 import '../../entity/find_subtitles_state.dart';
@@ -78,15 +78,10 @@ class FtvMedia3PlayerController {
     'app_player_plugin_activity',
   );
 
-  /// Native Player instance for Windows
-  media_kit.Player? _mediaKitPlayer;
+  /// Native Player instance for Windows/Linux (via fvp/video_player)
+  VideoPlayerController? _videoPlayerController;
 
-  media_kit.Player? get player => _mediaKitPlayer;
-
-  /// VideoController for media_kit_video
-  media_kit_video.VideoController? _videoController;
-
-  media_kit_video.VideoController? get videoController => _videoController;
+  VideoPlayerController? get videoPlayerController => _videoPlayerController;
 
   VoidCallback? _sleepTimerExec;
   SaveSubtitleStyle? _saveSubtitleStyle;
@@ -883,11 +878,10 @@ class FtvMedia3PlayerController {
 
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
-    if ((Platform.isWindows || Platform.isLinux)) {
-      if (_mediaKitPlayer != null) {
-        await _mediaKitPlayer!.dispose();
-        _mediaKitPlayer = null;
-        _videoController = null;
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (_videoPlayerController != null) {
+        await _videoPlayerController!.dispose();
+        _videoPlayerController = null;
       }
     }
   }
@@ -926,24 +920,47 @@ class FtvMedia3PlayerController {
       screenshotsEnable: _onScreenshotTaken != null,
     );
 
-    if ((Platform.isWindows || Platform.isLinux)) {
-      if (_mediaKitPlayer != null) {
-        await _mediaKitPlayer!.dispose();
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (_videoPlayerController != null) {
+        await _videoPlayerController!.dispose();
       }
-      _mediaKitPlayer = media_kit.Player();
-      _videoController = media_kit_video.VideoController(_mediaKitPlayer!);
-
-      _mediaKitPlayer!.stream.position.listen((pos) {
-        _updatePlaybackState(_playbackState.copyWith(position: pos.inSeconds));
-      });
-      _mediaKitPlayer!.stream.duration.listen((dur) {
-        _updatePlaybackState(_playbackState.copyWith(duration: dur.inSeconds));
-      });
-      _mediaKitPlayer!.stream.playing.listen((playing) {
-        _updateState(_playerState.copyWith(stateValue: playing ? StateValue.playing : StateValue.paused));
+      
+      // Register fvp with hardware decoder fallbacks and force seekable HTTP for WebDAV/NNTP duration parsing
+      fvp.registerWith(options: {
+        'video.decoders': ['D3D11', 'DXVA', 'CUDA', 'FFmpeg'],
+        'player': {
+          'avformat.seekable': '1',
+          'avio.seekable': '1',
+          'avformat.fflags': '+fastseek',
+        },
       });
 
-      await _mediaKitPlayer!.open(media_kit.Media(playlist[initialIndex].url));
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(playlist[initialIndex].url),
+      );
+
+      _videoPlayerController!.addListener(() {
+        final val = _videoPlayerController!.value;
+        if (val.isInitialized) {
+          final newPos = val.position.inSeconds;
+          final newDur = val.duration.inSeconds;
+          if (_playbackState.position != newPos || _playbackState.duration != newDur) {
+            _updatePlaybackState(_playbackState.copyWith(
+              position: newPos,
+              duration: newDur,
+            ));
+          }
+          final newStateVal = val.isPlaying ? StateValue.playing : StateValue.paused;
+          if (_playerState.stateValue != newStateVal) {
+            _updateState(_playerState.copyWith(
+              stateValue: newStateVal,
+            ));
+          }
+        }
+      });
+
+      await _videoPlayerController!.initialize();
+      await _videoPlayerController!.play();
       return;
     }
 
@@ -1095,8 +1112,10 @@ class FtvMedia3PlayerController {
 
   /// Toggles the player between play and pause states.
   Future<void> playPause() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
-      await _mediaKitPlayer!.playOrPause();
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+      _videoPlayerController!.value.isPlaying 
+          ? await _videoPlayerController!.pause() 
+          : await _videoPlayerController!.play();
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'playPause');
@@ -1104,8 +1123,8 @@ class FtvMedia3PlayerController {
 
   /// Starts or resumes playback.
   Future<void> play() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
-      await _mediaKitPlayer!.play();
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+      await _videoPlayerController!.play();
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'play');
@@ -1113,8 +1132,8 @@ class FtvMedia3PlayerController {
 
   /// Pauses playback.
   Future<void> pause() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
-      await _mediaKitPlayer!.pause();
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+      await _videoPlayerController!.pause();
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'pause');
@@ -1124,8 +1143,8 @@ class FtvMedia3PlayerController {
   ///
   /// [positionSeconds] The position to seek to, in seconds.
   Future<void> seekTo({required int positionSeconds}) async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
-      await _mediaKitPlayer!.seek(Duration(seconds: positionSeconds));
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+      await _videoPlayerController!.seekTo(Duration(seconds: positionSeconds));
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'seekTo', {
@@ -1241,7 +1260,7 @@ class FtvMedia3PlayerController {
 
   /// Stops playback and releases player resources.
   Future<void> stop() async {
-    if ((Platform.isWindows || Platform.isLinux) && _mediaKitPlayer != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
       if (_playbackState.position != null && _playbackState.duration != null) {
         // Sync watch history before disposing
         await _handleMethodCall(MethodCall('onWatchTimeMarked', {
@@ -1250,9 +1269,9 @@ class FtvMedia3PlayerController {
           'position_ms': _playbackState.position! * 1000,
         }));
       }
-      await _mediaKitPlayer!.stop();
-      await _mediaKitPlayer!.dispose();
-      _mediaKitPlayer = null;
+      await _videoPlayerController!.pause();
+      await _videoPlayerController!.dispose();
+      _videoPlayerController = null;
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'stop');

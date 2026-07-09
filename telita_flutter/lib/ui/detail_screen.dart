@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
@@ -118,6 +119,11 @@ class _DetailScreenState extends State<DetailScreen> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
+    } else if (stream.nzbUrl != null && stream.servers != null && stream.servers!.isNotEmpty) {
+      final encodedUrl = Uri.encodeComponent(stream.nzbUrl!);
+      final encodedServer = Uri.encodeComponent(stream.servers!.first);
+      final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
+      widget.onPlay(playUrl, widget.type, subtitleQueryId);
     } else if (stream.infoHash != null) {
       setState(() {
         _resolvingHash = stream.infoHash;
@@ -556,7 +562,7 @@ class _DetailScreenState extends State<DetailScreen> {
         itemCount: list.length,
         itemBuilder: (context, idx) {
           final s = list[idx];
-          final resolving = _resolvingHash != null && (_resolvingHash == s.infoHash || _resolvingHash == s.url);
+          final resolving = _resolvingHash != null && (_resolvingHash == s.infoHash || _resolvingHash == s.url || _resolvingHash == s.nzbUrl);
 
           return StreamCard(
             stream: s,
@@ -565,6 +571,39 @@ class _DetailScreenState extends State<DetailScreen> {
             onTap: () async {
               if (s.url != null && s.url!.isNotEmpty) {
                 widget.onPlay(s.url!, widget.type, widget.item.id);
+              } else if (s.nzbUrl != null && s.servers != null && s.servers!.isNotEmpty) {
+                final encodedUrl = Uri.encodeComponent(s.nzbUrl!);
+                final encodedServer = Uri.encodeComponent(s.servers!.first);
+                final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
+                
+                setState(() => _resolvingHash = s.nzbUrl);
+                
+                try {
+                  // Resolve 302 redirect here so the UI shows a spinner while the Core processes the NZB
+                  final request = await HttpClient().headUrl(Uri.parse(playUrl)).timeout(const Duration(seconds: 15));
+                  request.followRedirects = false;
+                  final response = await request.close();
+                  
+                  String finalUrl = playUrl;
+                  if (response.statusCode >= 300 && response.statusCode < 400) {
+                    final location = response.headers.value('location');
+                    if (location != null) finalUrl = location;
+                  }
+                  
+                  if (mounted) {
+                    widget.onPlay(finalUrl, widget.type, widget.item.id);
+                    // Keep spinner active during screen transition
+                    Future.delayed(const Duration(milliseconds: 500), () {
+                      if (mounted) setState(() => _resolvingHash = null);
+                    });
+                  }
+                } catch (e) {
+                  print("NZB Resolve error: $e");
+                  if (mounted) {
+                    widget.onPlay(playUrl, widget.type, widget.item.id);
+                    setState(() => _resolvingHash = null);
+                  }
+                }
               } else if (s.infoHash != null && s.infoHash!.isNotEmpty) {
                 setState(() => _resolvingHash = s.infoHash);
                 final url = await _resolveStreamUrl(s.infoHash!);

@@ -4,10 +4,9 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_acrylic
+  fvp
   media_kit_libs_linux
-  media_kit_video
   url_launcher_linux
-  volume_controller
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

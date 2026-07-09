@@ -6,8 +6,9 @@ import 'dart:io';
 import '../../overlay/media_ui_service/media3_ui_controller.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../overlay/bloc/overlay_ui_bloc.dart';
-import 'package:media_kit_video/media_kit_video.dart';
-import 'package:media_kit/media_kit.dart' as media_kit;
+import 'package:video_player/video_player.dart';
+import 'package:fvp/fvp.dart';
+import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:lottie/lottie.dart';
 import '../../overlay/screens/components/widgets/brand_loading_indicator.dart';
 
@@ -54,19 +55,19 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if ((Platform.isWindows || Platform.isLinux)) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
-        if (mounted && FtvMedia3PlayerController().videoController == null) {
+        if (mounted && FtvMedia3PlayerController().videoPlayerController == null) {
           setState(() => _loadingTimedOut = true);
         }
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!(Platform.isWindows || Platform.isLinux)) {
+      if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
       try {
-        if ((Platform.isWindows || Platform.isLinux)) {
+        if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
           _overlayController = Media3UiController();
           _overlayController!.initForWindows(widget.playlist, widget.initialIndex);
           setState(() {});
@@ -78,7 +79,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       } catch (e) {
         if (mounted) {
           _showErrorSnackBar(context, e.toString());
-          if ((Platform.isWindows || Platform.isLinux)) {
+          if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
             setState(() => _loadingTimedOut = true);
           }
         }
@@ -103,7 +104,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux)) {
+    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       isClose = true;
       Navigator.of(context).maybePop();
     }
@@ -133,10 +134,9 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   Widget build(BuildContext context) {
     // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
     // We just need a black background behind it while it loads.
-    if ((Platform.isWindows || Platform.isLinux)) {
-      final controller = FtvMedia3PlayerController().videoController;
-      final player = FtvMedia3PlayerController().player;
-      if (controller == null || player == null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      final controller = FtvMedia3PlayerController().videoPlayerController;
+      if (controller == null) {
         return Scaffold(
           backgroundColor: Colors.black,
           body: Stack(
@@ -184,7 +184,6 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       return Scaffold(
         backgroundColor: Colors.black,
         body: _WindowsDesktopPlayer(
-          player: player,
           controller: controller,
           playlist: widget.playlist,
           initialIndex: widget.initialIndex,
@@ -248,15 +247,13 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
 // ---------------------------------------------------------------------------
 
 class _WindowsDesktopPlayer extends StatefulWidget {
-  final media_kit.Player player;
-  final VideoController controller;
+  final VideoPlayerController controller;
   final List<PlaylistMediaItem> playlist;
   final int initialIndex;
   final VoidCallback onBack;
   final Media3UiController? overlayController;
 
   const _WindowsDesktopPlayer({
-    required this.player,
     required this.controller,
     required this.playlist,
     required this.initialIndex,
@@ -270,49 +267,135 @@ class _WindowsDesktopPlayer extends StatefulWidget {
 
 class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   bool _controlsVisible = true;
+  bool _controlsMounted = true;
   Timer? _hideTimer;
+  Timer? _unmountTimer;
+  Timer? _historyTimer;
   static const _hideAfter = Duration(seconds: 3);
   SubtitleStyle? _subtitleStyle;
   StreamSubscription<PlayerState>? _styleSubscription;
+  bool _isInitialized = false;
+  bool _isFullscreen = false;
+  bool _defaultAudioSelected = false;
 
   @override
   void initState() {
     super.initState();
+    _isInitialized = widget.controller.value.isInitialized;
+    widget.controller.addListener(_checkInit);
     _subtitleStyle = widget.overlayController?.playerState.subtitleStyle;
     _styleSubscription = widget.overlayController?.playerStateStream.listen((state) {
       if (mounted && state.subtitleStyle != _subtitleStyle) {
         setState(() => _subtitleStyle = state.subtitleStyle);
       }
     });
+    _historyTimer = Timer.periodic(const Duration(seconds: 5), _syncWatchHistory);
+  }
+
+  void _syncWatchHistory([Timer? _]) {
+    if (!mounted) return;
+    final value = widget.controller.value;
+    if (!value.isInitialized || value.duration == Duration.zero) return;
+
+    final positionSec = value.position.inSeconds;
+    final durationSec = value.duration.inSeconds;
+    
+    if (durationSec == 0 || positionSec <= 5) return;
+    
+    if (widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length) {
+      final item = widget.playlist[widget.initialIndex];
+      if (item.saveWatchTime != null) {
+        item.saveWatchTime!(
+          id: item.id,
+          duration: durationSec,
+          position: positionSec > durationSec ? durationSec : positionSec,
+          playIndex: widget.initialIndex,
+        );
+      }
+    }
+  }
+
+  void _checkInit() {
+    if (mounted && widget.controller.value.isInitialized != _isInitialized) {
+      setState(() => _isInitialized = widget.controller.value.isInitialized);
+      
+      if (_isInitialized && !_defaultAudioSelected) {
+        _defaultAudioSelected = true;
+        _selectDefaultAudioTrack();
+      }
+    }
+  }
+
+  void _selectDefaultAudioTrack() {
+    final mediaInfo = widget.controller.getMediaInfo();
+    final audioTracks = mediaInfo?.audio ?? [];
+    if (audioTracks.isEmpty) return;
+    
+    try {
+      final targetTrack = audioTracks.firstWhere(
+        (t) {
+          final lang = t.metadata['language']?.toUpperCase() ?? '';
+          return lang == 'ENG' || lang == 'EN' || lang == 'ENGLISH';
+        },
+        orElse: () => audioTracks.first,
+      );
+      widget.controller.setAudioTracks([targetTrack.index]);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _syncWatchHistory();
+    widget.controller.removeListener(_checkInit);
     _hideTimer?.cancel();
+    _unmountTimer?.cancel();
+    _historyTimer?.cancel();
     _styleSubscription?.cancel();
     super.dispose();
   }
 
   void _onMouseActivity() {
     _hideTimer?.cancel();
-    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _unmountTimer?.cancel();
+    if (!_controlsMounted || !_controlsVisible) {
+      setState(() {
+        _controlsMounted = true;
+        _controlsVisible = true;
+      });
+    }
     _scheduleHide();
   }
 
   void _scheduleHide() {
-    if (!widget.player.state.playing) return; // keep visible when paused
+    if (!widget.controller.value.isPlaying) return; // keep visible when paused
     _hideTimer = Timer(_hideAfter, () {
-      if (mounted) setState(() => _controlsVisible = false);
+      if (mounted) {
+        setState(() => _controlsVisible = false);
+        _unmountTimer = Timer(const Duration(milliseconds: 250), () {
+          if (mounted) setState(() => _controlsMounted = false);
+        });
+      }
     });
   }
 
   void _togglePlay() {
-    widget.player.state.playing ? widget.player.pause() : widget.player.play();
+    widget.controller.value.isPlaying ? widget.controller.pause() : widget.controller.play();
+  }
+
+  void _toggleFullscreen() {
+    setState(() {
+      _isFullscreen = !_isFullscreen;
+    });
+    if (_isFullscreen) {
+      acrylic.Window.enterFullscreen();
+    } else {
+      acrylic.Window.exitFullscreen();
+    }
   }
 
   void _seek(Duration delta) {
-    final next = widget.player.state.position + delta;
-    widget.player.seek(next.isNegative ? Duration.zero : next);
+    final next = widget.controller.value.position + delta;
+    widget.controller.seekTo(next.isNegative ? Duration.zero : next);
   }
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
@@ -324,6 +407,9 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       case LogicalKeyboardKey.space:
         _togglePlay();
         return KeyEventResult.handled;
+      case LogicalKeyboardKey.keyF:
+        _toggleFullscreen();
+        return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowRight:
         _seek(const Duration(seconds: 10));
         return KeyEventResult.handled;
@@ -331,10 +417,10 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         _seek(const Duration(seconds: -10));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowUp:
-        widget.player.setVolume((widget.player.state.volume + 5).clamp(0, 100));
+        widget.controller.setVolume((widget.controller.value.volume + 0.05).clamp(0.0, 1.0));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowDown:
-        widget.player.setVolume((widget.player.state.volume - 5).clamp(0, 100));
+        widget.controller.setVolume((widget.controller.value.volume - 0.05).clamp(0.0, 1.0));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.escape:
         widget.onBack();
@@ -344,53 +430,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     }
   }
 
-  SubtitleViewConfiguration _buildSubtitleConfig(SubtitleStyle? style) {
-    if (style == null) return const SubtitleViewConfiguration();
 
-    final fgColor = style.foregroundColor?.color ?? Colors.white;
-    final bgColor = style.backgroundColor?.color ?? Colors.transparent;
-    final shadowColor = style.edgeColor?.color ?? Colors.black;
-    final sizeFraction = style.textSizeFraction ?? 1.0;
-    final baseFontSize = 42.0 * sizeFraction;
-
-    List<Shadow> shadows = [];
-    switch (style.edgeType) {
-      case SubtitleEdgeType.dropShadow:
-        shadows = [Shadow(color: shadowColor, blurRadius: 4, offset: const Offset(2, 2))];
-        break;
-      case SubtitleEdgeType.outline:
-        shadows = [
-          Shadow(color: shadowColor, blurRadius: 0, offset: const Offset(1, 1)),
-          Shadow(color: shadowColor, blurRadius: 0, offset: const Offset(-1, -1)),
-          Shadow(color: shadowColor, blurRadius: 0, offset: const Offset(1, -1)),
-          Shadow(color: shadowColor, blurRadius: 0, offset: const Offset(-1, 1)),
-        ];
-        break;
-      case SubtitleEdgeType.raised:
-        shadows = [Shadow(color: shadowColor, blurRadius: 2, offset: const Offset(2, 2))];
-        break;
-      case SubtitleEdgeType.depressed:
-        shadows = [Shadow(color: shadowColor, blurRadius: 2, offset: const Offset(-2, -2))];
-        break;
-      default:
-        break;
-    }
-
-    return SubtitleViewConfiguration(
-      style: TextStyle(
-        color: fgColor,
-        fontSize: baseFontSize,
-        backgroundColor: bgColor,
-        shadows: shadows,
-      ),
-      padding: EdgeInsets.only(
-        bottom: (style.bottomPadding ?? 0).toDouble(),
-        left: (style.leftPadding ?? 0).toDouble(),
-        right: (style.rightPadding ?? 0).toDouble(),
-        top: (style.topPadding ?? 0).toDouble(),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -402,17 +442,29 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         autofocus: true,
         onKeyEvent: _handleKey,
         child: Stack(
+          fit: StackFit.expand,
           children: [
             // Video fills the entire space with no built-in controls overlay.
             Positioned.fill(
-              child: Video(
-                controller: widget.controller,
-                controls: NoVideoControls,
-                subtitleViewConfiguration: _buildSubtitleConfig(_subtitleStyle),
+              child: GestureDetector(
+                onTap: _togglePlay,
+                child: RepaintBoundary(
+                  child: _isInitialized
+                      ? Center(
+                          child: AspectRatio(
+                            aspectRatio: widget.controller.value.aspectRatio,
+                            child: VideoPlayer(widget.controller),
+                          ),
+                        )
+                      : const Center(
+                          child: BrandLoadingIndicator(size: 72, color: AppTheme.fullFocusColor),
+                        ),
+                ),
               ),
             ),
 
-            // Buffering indicator.
+            // Buffering indicator. (Temporarily commented out for stutter debugging)
+            /*
             StreamBuilder<bool>(
               stream: widget.player.stream.buffering,
               builder: (context, snap) {
@@ -427,19 +479,25 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     : const SizedBox.shrink();
               },
             ),
+            */
 
             // Controls overlay — fades in/out on mouse activity.
-            AnimatedOpacity(
-              opacity: _controlsVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 250),
-              child: _ControlsOverlay(
-                player: widget.player,
-                playlist: widget.playlist,
-                initialIndex: widget.initialIndex,
-                onBack: widget.onBack,
-                onActivity: _onMouseActivity,
+            if (_controlsMounted)
+              RepaintBoundary(
+                child: AnimatedOpacity(
+                  opacity: _controlsVisible ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: _ControlsOverlay(
+                    controller: widget.controller,
+                    playlist: widget.playlist,
+                    initialIndex: widget.initialIndex,
+                    onBack: widget.onBack,
+                    onActivity: _onMouseActivity,
+                    isFullscreen: _isFullscreen,
+                    onToggleFullscreen: _toggleFullscreen,
+                  ),
+                ),
               ),
-            ),
           ],
         ),
       ),
@@ -448,18 +506,23 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 }
 
 class _ControlsOverlay extends StatelessWidget {
-  final media_kit.Player player;
+  final VideoPlayerController controller;
   final List<PlaylistMediaItem> playlist;
   final int initialIndex;
   final VoidCallback onBack;
   final VoidCallback onActivity;
+  final bool isFullscreen;
+  final VoidCallback onToggleFullscreen;
 
   const _ControlsOverlay({
-    required this.player,
+    super.key,
+    required this.controller,
     required this.playlist,
     required this.initialIndex,
     required this.onBack,
     required this.onActivity,
+    required this.isFullscreen,
+    required this.onToggleFullscreen,
   });
 
   @override
@@ -523,15 +586,15 @@ class _ControlsOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _SeekBar(player: player, onActivity: onActivity),
+                  _SeekBar(controller: controller, onActivity: onActivity),
                   const SizedBox(height: 4),
                   Row(
                     children: [
                       // Play / pause
-                      StreamBuilder<bool>(
-                        stream: player.stream.playing,
-                        builder: (context, snap) {
-                          final playing = snap.data ?? player.state.playing;
+                      ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: controller,
+                        builder: (context, val, _) {
+                          final playing = val.isPlaying;
                           return IconButton(
                             icon: Icon(
                               playing ? Icons.pause : Icons.play_arrow,
@@ -539,49 +602,53 @@ class _ControlsOverlay extends StatelessWidget {
                             ),
                             onPressed: () {
                               onActivity();
-                              playing ? player.pause() : player.play();
+                              playing ? controller.pause() : controller.play();
                             },
                           );
                         },
                       ),
                       // Position / duration
-                      StreamBuilder<Duration>(
-                        stream: player.stream.position,
-                        builder: (context, snap) {
-                          final pos = snap.data ?? player.state.position;
-                          final dur = player.state.duration;
+                      ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: controller,
+                        builder: (context, val, _) {
                           return Text(
-                            '${_fmt(pos)} / ${_fmt(dur)}',
+                            '${_fmt(val.position)} / ${_fmt(val.duration)}',
                             style: const TextStyle(color: Colors.white70, fontSize: 13),
                           );
                         },
                       ),
                       const Spacer(),
-                      SubtitleTrackButton(player: player),
-                      AudioTrackButton(player: player),
+                      SubtitleTrackSelector(controller: controller, onActivity: onActivity),
+                      AudioTrackSelector(controller: controller, onActivity: onActivity),
                       // Volume
-                      StreamBuilder<double>(
-                        stream: player.stream.volume,
-                        builder: (context, snap) {
-                          final vol = snap.data ?? player.state.volume;
+                      ValueListenableBuilder<VideoPlayerValue>(
+                        valueListenable: controller,
+                        builder: (context, val, _) {
+                          final vol = val.volume;
                           return IconButton(
                             icon: Icon(
                               vol == 0
                                   ? Icons.volume_off
-                                  : vol < 50
+                                  : vol < 0.5
                                       ? Icons.volume_down
                                       : Icons.volume_up,
                               color: Colors.white,
                             ),
                             onPressed: () {
                               onActivity();
-                              player.setVolume(vol > 0 ? 0 : 100);
+                              controller.setVolume(vol > 0 ? 0 : 1.0);
                             },
                           );
                         },
                       ),
+
+                      FullscreenButton(
+                        onActivity: onActivity,
+                        isFullscreen: isFullscreen,
+                        onToggle: onToggleFullscreen,
+                      ),
                       PlayerMoreMenuButton(
-                        player: player,
+                        controller: controller,
                         playlist: playlist,
                         initialIndex: initialIndex,
                       ),
@@ -605,9 +672,9 @@ class _ControlsOverlay extends StatelessWidget {
 }
 
 class _SeekBar extends StatefulWidget {
-  final media_kit.Player player;
+  final VideoPlayerController controller;
   final VoidCallback onActivity;
-  const _SeekBar({required this.player, required this.onActivity});
+  const _SeekBar({super.key, required this.controller, required this.onActivity});
 
   @override
   State<_SeekBar> createState() => _SeekBarState();
@@ -618,42 +685,37 @@ class _SeekBarState extends State<_SeekBar> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Duration>(
-      stream: widget.player.stream.position,
-      builder: (context, posSnap) {
-        return StreamBuilder<Duration>(
-          stream: widget.player.stream.duration,
-          builder: (context, durSnap) {
-            final pos = posSnap.data ?? widget.player.state.position;
-            final dur = durSnap.data ?? widget.player.state.duration;
-            final total = dur.inMilliseconds.toDouble();
-            final current = (_dragging ?? pos.inMilliseconds.toDouble()).clamp(0.0, total > 0 ? total : 1.0);
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: widget.controller,
+      builder: (context, val, _) {
+        final pos = val.position.inMilliseconds.toDouble();
+        final dur = val.duration.inMilliseconds.toDouble();
+        final total = dur;
+        final current = (_dragging ?? pos).clamp(0.0, total > 0 ? total : 1.0);
 
-            return SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: AppTheme.fullFocusColor,
-                thumbColor: AppTheme.fullFocusColor,
-                inactiveTrackColor: Colors.white24,
-                overlayColor: AppTheme.fullFocusColor.withOpacity(0.2),
-                trackHeight: 3,
-                thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              ),
-              child: Slider(
-                min: 0,
-                max: total > 0 ? total : 1.0,
-                value: current,
-                onChangeStart: (_) => widget.onActivity(),
-                onChanged: (v) {
-                  widget.onActivity();
-                  setState(() => _dragging = v);
-                },
-                onChangeEnd: (v) {
-                  widget.player.seek(Duration(milliseconds: v.round()));
-                  setState(() => _dragging = null);
-                },
-              ),
-            );
-          },
+        return SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: AppTheme.fullFocusColor,
+            thumbColor: AppTheme.fullFocusColor,
+            inactiveTrackColor: Colors.white24,
+            overlayColor: AppTheme.fullFocusColor.withOpacity(0.2),
+            trackHeight: 3,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+          ),
+          child: Slider(
+            min: 0,
+            max: total > 0 ? total : 1.0,
+            value: current,
+            onChangeStart: (_) => widget.onActivity(),
+            onChanged: (v) {
+              widget.onActivity();
+              setState(() => _dragging = v);
+            },
+            onChangeEnd: (v) {
+              widget.controller.seekTo(Duration(milliseconds: v.round()));
+              setState(() => _dragging = null);
+            },
+          ),
         );
       },
     );
@@ -757,183 +819,32 @@ void showTrackSelectionDialog<T>({
 }
 
 class SubtitleTrackButton extends StatelessWidget {
-  final media_kit.Player player;
-  const SubtitleTrackButton({required this.player, super.key});
-
-  List<String> _getSubtitleTrackBadges(media_kit.SubtitleTrack track) {
-    final List<String> badges = [];
-    if (track.language != null && track.language!.isNotEmpty) {
-      badges.add(track.language!.toUpperCase());
-    }
-    final titleLower = (track.title ?? '').toLowerCase();
-    if (titleLower.contains('forced')) badges.add('FORCED');
-    if (titleLower.contains('sdh')) badges.add('SDH');
-    return badges;
-  }
-
+  const SubtitleTrackButton({super.key});
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<media_kit.Track>(
-      stream: player.stream.track,
-      builder: (context, snapshot) {
-        final currentTrack = player.state.track.subtitle;
-        final hasSubtitles = currentTrack.id != 'no';
-        
-        return IconButton(
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(
-                Icons.subtitles,
-                color: hasSubtitles ? AppTheme.fullFocusColor : Colors.white,
-              ),
-              if (hasSubtitles)
-                Positioned(
-                  right: -4,
-                  top: -4,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: AppTheme.fullFocusColor,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 8,
-                      minHeight: 8,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          onPressed: () {
-            final tracks = player.state.tracks.subtitle;
-            showTrackSelectionDialog<media_kit.SubtitleTrack>(
-              context: context,
-              title: 'Select Subtitles',
-              tracks: tracks,
-              activeTrack: currentTrack,
-              getTrackLabel: (track) {
-                if (track.id == 'no') return 'Off';
-                if (track.id == 'auto') return 'Auto';
-                final lang = track.language ?? '';
-                final title = track.title ?? '';
-                final label = [title, lang].where((e) => e.isNotEmpty).join(' - ');
-                return label.isNotEmpty ? label : 'Track ${track.id}';
-              },
-              getTrackBadges: _getSubtitleTrackBadges,
-              onTrackSelected: (track) {
-                player.setSubtitleTrack(track);
-              },
-            );
-          },
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 class AudioTrackButton extends StatelessWidget {
-  final media_kit.Player player;
-  const AudioTrackButton({required this.player, super.key});
-
-  List<String> _getAudioTrackBadges(media_kit.AudioTrack track) {
-    final List<String> badges = [];
-    if (track.language != null && track.language!.isNotEmpty) {
-      badges.add(track.language!.toUpperCase());
-    }
-    final titleLower = (track.title ?? '').toLowerCase();
-    if (titleLower.contains('5.1')) badges.add('5.1');
-    if (titleLower.contains('7.1')) badges.add('7.1');
-    if (titleLower.contains('atmos')) badges.add('ATMOS');
-    if (titleLower.contains('dolby') || titleLower.contains('ac3') || titleLower.contains('dts')) {
-      badges.add('DOLBY');
-    }
-    if (titleLower.contains('aac')) badges.add('AAC');
-    if (titleLower.contains('stereo')) badges.add('STEREO');
-    return badges;
-  }
-
+  const AudioTrackButton({super.key});
   @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<media_kit.Track>(
-      stream: player.stream.track,
-      builder: (context, snapshot) {
-        final currentTrack = player.state.track.audio;
-        final hasMultipleAudio = player.state.tracks.audio.length > 1;
-
-        return IconButton(
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(
-                Icons.audiotrack,
-                color: hasMultipleAudio ? AppTheme.fullFocusColor : Colors.white,
-              ),
-              if (hasMultipleAudio)
-                Positioned(
-                  right: -4,
-                  top: -4,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                      color: AppTheme.fullFocusColor,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 8,
-                      minHeight: 8,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          onPressed: () {
-            final tracks = player.state.tracks.audio;
-            showTrackSelectionDialog<media_kit.AudioTrack>(
-              context: context,
-              title: 'Select Audio Track',
-              tracks: tracks,
-              activeTrack: currentTrack,
-              getTrackLabel: (track) {
-                if (track.id == 'no') return 'Off';
-                if (track.id == 'auto') return 'Auto';
-                final lang = track.language ?? '';
-                final title = track.title ?? '';
-                final label = [title, lang].where((e) => e.isNotEmpty).join(' - ');
-                return label.isNotEmpty ? label : 'Track ${track.id}';
-              },
-              getTrackBadges: _getAudioTrackBadges,
-              onTrackSelected: (track) {
-                player.setAudioTrack(track);
-              },
-            );
-          },
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 class PlayerMoreMenuButton extends StatelessWidget {
-  final media_kit.Player player;
+  final VideoPlayerController controller;
   final List<PlaylistMediaItem> playlist;
   final int initialIndex;
 
   const PlayerMoreMenuButton({
-    required this.player,
+    required this.controller,
     required this.playlist,
     required this.initialIndex,
     super.key,
   });
 
   String _getStreamUrl() {
-    try {
-      final playlistIndex = player.state.playlist.index;
-      if (playlistIndex >= 0 && playlistIndex < playlist.length) {
-        return playlist[playlistIndex].url;
-      }
-    } catch (_) {}
-    return playlist.isNotEmpty ? playlist[initialIndex].url : '';
+    if (playlist.isEmpty) return '';
+    return playlist[initialIndex].originalUrl ?? playlist[initialIndex].url;
   }
 
   @override
@@ -1032,6 +943,298 @@ class PlayerMoreMenuButton extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+String _getLanguageName(String code) {
+  switch (code.toUpperCase()) {
+    case 'ENG': case 'EN': return 'English';
+    case 'ITA': case 'IT': return 'Italian';
+    case 'FRA': case 'FRE': case 'FR': return 'French';
+    case 'GER': case 'DEU': case 'DE': return 'German';
+    case 'SPA': case 'ES': return 'Spanish';
+    case 'JPN': case 'JA': return 'Japanese';
+    case 'KOR': case 'KO': return 'Korean';
+    case 'CHI': case 'ZHO': case 'ZH': return 'Chinese';
+    case 'RUS': case 'RU': return 'Russian';
+    case 'HIN': case 'HI': return 'Hindi';
+    case 'POR': case 'PT': return 'Portuguese';
+    case 'ARA': case 'AR': return 'Arabic';
+    case 'TUR': case 'TR': return 'Turkish';
+    case 'POL': case 'PL': return 'Polish';
+    case 'NLD': case 'DUT': case 'NL': return 'Dutch';
+    case 'UND': return 'Unknown';
+    default: return code.toUpperCase();
+  }
+}
+
+class AudioTrackSelector extends StatelessWidget {
+  final VideoPlayerController controller;
+  final VoidCallback onActivity;
+  const AudioTrackSelector({super.key, required this.controller, required this.onActivity});
+
+  Widget _buildBadge(String text, {bool isLang = false}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isLang ? Colors.white.withOpacity(0.15) : Colors.transparent,
+        border: isLang ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text, style: TextStyle(color: isLang ? Colors.white : Colors.white70, fontSize: 11, fontWeight: isLang ? FontWeight.bold : FontWeight.normal)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaInfo = controller.getMediaInfo();
+    final audioTracks = mediaInfo?.audio ?? [];
+    if (audioTracks.isEmpty) return const SizedBox.shrink();
+
+    return IconButton(
+      icon: const Icon(Icons.audiotrack, color: Colors.white),
+      tooltip: 'Audio Tracks',
+      onPressed: () {
+        onActivity();
+        showDialog(
+          context: context,
+          builder: (context) {
+            return Dialog(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.white12, width: 1),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('Audio Tracks', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    const Divider(color: Colors.white24, height: 1),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: audioTracks.length + 1,
+                        itemBuilder: (context, index) {
+                          final activeIds = controller.getActiveAudioTracks() ?? [];
+                          final activeId = activeIds.isNotEmpty ? activeIds.first : -1;
+                          
+                          if (index == 0) {
+                            final isSelected = activeId == -1; // Fallback heuristic
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              title: Text('Auto', style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
+                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : null,
+                              onTap: () {
+                                controller.setAudioTracks([-1]);
+                                Navigator.pop(context);
+                              },
+                            );
+                          }
+
+                          final track = audioTracks[index - 1];
+                          final isSelected = track.index == activeId;
+                          
+                          final rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+                          final lang = _getLanguageName(rawLang);
+                          final title = track.metadata['title'] ?? '';
+                          final channels = track.codec.channels;
+                          String channelStr = '';
+                          if (channels == 2) channelStr = '2.0';
+                          else if (channels == 6) channelStr = '5.1';
+                          else if (channels == 8) channelStr = '7.1';
+                          else if (channels > 0) channelStr = '$channels ch';
+
+                          final codec = track.codec.codec.toUpperCase();
+                          String badge = '';
+                          if (codec.contains('EAC3') || codec.contains('AC3')) badge = 'Dolby';
+                          else if (codec.contains('TRUEHD')) badge = 'TrueHD';
+                          else if (codec.contains('DTS')) badge = 'DTS';
+                          else badge = codec;
+
+                          final bitRate = track.codec.bitRate > 0 ? '${(track.codec.bitRate / 1000).round()} kbps' : '';
+                          final sampleRate = track.codec.sampleRate > 0 ? '${(track.codec.sampleRate / 1000).toStringAsFixed(1)} kHz' : '';
+                          final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                            title: Row(
+                              children: [
+                                _buildBadge(lang, isLang: true),
+                                Expanded(
+                                  child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                ),
+                                const SizedBox(width: 16),
+                                if (bitRate.isNotEmpty) _buildBadge(bitRate),
+                                if (sampleRate.isNotEmpty) _buildBadge(sampleRate),
+                                if (channelStr.isNotEmpty) _buildBadge(channelStr),
+                                if (badge.isNotEmpty) _buildBadge(badge),
+                              ],
+                            ),
+                            trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
+                            onTap: () {
+                              controller.setAudioTracks([track.index]);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class SubtitleTrackSelector extends StatelessWidget {
+  final VideoPlayerController controller;
+  final VoidCallback onActivity;
+  const SubtitleTrackSelector({super.key, required this.controller, required this.onActivity});
+
+  Widget _buildBadge(String text, {bool isLang = false}) {
+    return Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: isLang ? Colors.white.withOpacity(0.15) : Colors.transparent,
+        border: isLang ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(text, style: TextStyle(color: isLang ? Colors.white : Colors.white70, fontSize: 11, fontWeight: isLang ? FontWeight.bold : FontWeight.normal)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaInfo = controller.getMediaInfo();
+    final subTracks = mediaInfo?.subtitle ?? [];
+    if (subTracks.isEmpty) return const SizedBox.shrink();
+
+    return IconButton(
+      icon: const Icon(Icons.subtitles, color: Colors.white),
+      tooltip: 'Subtitles',
+      onPressed: () {
+        onActivity();
+        showDialog(
+          context: context,
+          builder: (context) {
+            return Dialog(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.white12, width: 1),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('Subtitles', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    const Divider(color: Colors.white24, height: 1),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: subTracks.length + 2,
+                        itemBuilder: (context, index) {
+                          final activeIds = controller.getActiveSubtitleTracks() ?? [];
+                          final activeId = activeIds.isNotEmpty ? activeIds.first : -1;
+                          
+                          if (index == 0) {
+                            final isSelected = activeIds.isEmpty;
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              title: Text('Disabled', style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
+                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : null,
+                              onTap: () {
+                                controller.setSubtitleTracks([]);
+                                Navigator.pop(context);
+                              },
+                            );
+                          }
+                          
+                          if (index == 1) {
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              title: const Text('Auto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.normal, fontSize: 16)),
+                              onTap: () {
+                                controller.setSubtitleTracks([-1]);
+                                Navigator.pop(context);
+                              },
+                            );
+                          }
+
+                          final track = subTracks[index - 2];
+                          final isSelected = track.index == activeId && activeIds.isNotEmpty;
+                          
+                          final rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+                          final lang = _getLanguageName(rawLang);
+                          final title = track.metadata['title'] ?? '';
+                          final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
+                          
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                            title: Row(
+                              children: [
+                                _buildBadge(lang, isLang: true),
+                                Expanded(
+                                  child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                ),
+                              ],
+                            ),
+                            trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
+                            onTap: () {
+                              controller.setSubtitleTracks([track.index]);
+                              Navigator.pop(context);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class FullscreenButton extends StatelessWidget {
+  final VoidCallback onActivity;
+  final bool isFullscreen;
+  final VoidCallback onToggle;
+  
+  const FullscreenButton({
+    super.key,
+    required this.onActivity,
+    required this.isFullscreen,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+      onPressed: () {
+        onActivity();
+        onToggle();
+      },
     );
   }
 }
