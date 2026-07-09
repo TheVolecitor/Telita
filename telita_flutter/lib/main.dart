@@ -14,6 +14,7 @@ import 'core/watch_history.dart';
 import 'core/settings.dart';
 import 'ui/splash_screen.dart';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import 'package:flutter_tv_media3/flutter_tv_media3.dart';
 import 'package:path/path.dart' as p;
@@ -32,6 +33,13 @@ void main() async {
       
       final coreProcess = await Process.start(executable, []);
       print('[CORE] $executable started with PID: ${coreProcess.pid}');
+
+      coreProcess.stdout.transform(utf8.decoder).listen((data) {
+        print('[CORE-OUT] ${data.trim()}');
+      });
+      coreProcess.stderr.transform(utf8.decoder).listen((data) {
+        print('[CORE-ERR] ${data.trim()}');
+      });
 
       // Wait for core to be ready
       bool coreReady = false;

@@ -26,8 +26,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.5' # specify channel or exact version
-          channel: 'stable'
+          channel: 'master'
 
       - name: Build macOS Flutter App
         run: |
