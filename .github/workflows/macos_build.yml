@@ -21,7 +21,7 @@ jobs:
       - name: Build Go Core (macOS)
         run: |
           cd core
-          GOOS=darwin GOARCH=arm64 go build -o libcore main.go
+          GOOS=darwin GOARCH=arm64 go build -o libcore .
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
