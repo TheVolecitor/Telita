@@ -318,7 +318,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   void _checkInit() {
     if (mounted && widget.controller.value.isInitialized != _isInitialized) {
       setState(() => _isInitialized = widget.controller.value.isInitialized);
-      
+
       if (_isInitialized && !_defaultAudioSelected) {
         _defaultAudioSelected = true;
         _selectDefaultAudioTrack();
@@ -326,21 +326,34 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     }
   }
 
+  // Waits briefly for fvp to finish parsing track metadata before
+  // selecting English audio. Falls back to first track if not found.
   void _selectDefaultAudioTrack() {
-    final mediaInfo = widget.controller.getMediaInfo();
-    final audioTracks = mediaInfo?.audio ?? [];
-    if (audioTracks.isEmpty) return;
-    
-    try {
-      final targetTrack = audioTracks.firstWhere(
-        (t) {
-          final lang = t.metadata['language']?.toUpperCase() ?? '';
-          return lang == 'ENG' || lang == 'EN' || lang == 'ENGLISH';
-        },
-        orElse: () => audioTracks.first,
-      );
-      widget.controller.setAudioTracks([targetTrack.index]);
-    } catch (_) {}
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final mediaInfo = widget.controller.getMediaInfo();
+      final audioTracks = mediaInfo?.audio ?? [];
+      if (audioTracks.isEmpty) {
+        // Still no tracks — just pick first
+        try { widget.controller.setAudioTracks([0]); } catch (_) {}
+        return;
+      }
+
+      try {
+        int targetPosition = 0; // fallback to first track (0-based)
+        for (int i = 0; i < audioTracks.length; i++) {
+          final lang = audioTracks[i].metadata['language']?.toUpperCase() ?? '';
+          final title = audioTracks[i].metadata['title']?.toUpperCase() ?? '';
+          
+          if (lang == 'ENG' || lang == 'EN' || lang == 'ENGLISH' || 
+              title.contains('ENG') || title.contains('ENGLISH')) {
+            targetPosition = i;
+            break;
+          }
+        }
+        widget.controller.setAudioTracks([targetPosition]);
+      } catch (_) {}
+    });
   }
 
   @override
@@ -463,13 +476,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               ),
             ),
 
-            // Buffering indicator. (Temporarily commented out for stutter debugging)
-            /*
-            StreamBuilder<bool>(
-              stream: widget.player.stream.buffering,
-              builder: (context, snap) {
-                final buffering = snap.data ?? false;
-                return buffering
+            // Buffering indicator
+            ValueListenableBuilder<VideoPlayerValue>(
+              valueListenable: widget.controller,
+              builder: (context, value, child) {
+                return value.isBuffering
                     ? const Center(
                         child: BrandLoadingIndicator(
                           size: 80,
@@ -479,7 +490,6 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     : const SizedBox.shrink();
               },
             ),
-            */
 
             // Controls overlay — fades in/out on mouse activity.
             if (_controlsMounted)
@@ -1039,11 +1049,25 @@ class AudioTrackSelector extends StatelessWidget {
                           }
 
                           final track = audioTracks[index - 1];
-                          final isSelected = track.index == activeId;
+                          final listPosition = index - 1;
+                          final isSelected = listPosition == activeId;
                           
-                          final rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
-                          final lang = _getLanguageName(rawLang);
                           final title = track.metadata['title'] ?? '';
+                          String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+                          
+                          if (rawLang == 'UND' || rawLang.isEmpty) {
+                            final upTitle = title.toUpperCase();
+                            if (upTitle.contains('ENG')) rawLang = 'ENG';
+                            else if (upTitle.contains('ITA')) rawLang = 'ITA';
+                            else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
+                            else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
+                            else if (upTitle.contains('SPA')) rawLang = 'SPA';
+                            else if (upTitle.contains('JPN')) rawLang = 'JPN';
+                            else if (upTitle.contains('KOR')) rawLang = 'KOR';
+                            else if (upTitle.contains('HIN')) rawLang = 'HIN';
+                          }
+
+                          final lang = _getLanguageName(rawLang);
                           final channels = track.codec.channels;
                           String channelStr = '';
                           if (channels == 2) channelStr = '2.0';
@@ -1079,7 +1103,7 @@ class AudioTrackSelector extends StatelessWidget {
                             ),
                             trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
                             onTap: () {
-                              controller.setAudioTracks([track.index]);
+                              controller.setAudioTracks([listPosition]);
                               Navigator.pop(context);
                             },
                           );
@@ -1178,11 +1202,25 @@ class SubtitleTrackSelector extends StatelessWidget {
                           }
 
                           final track = subTracks[index - 2];
-                          final isSelected = track.index == activeId && activeIds.isNotEmpty;
+                          final listPosition = index - 2;
+                          final isSelected = listPosition == activeId && activeIds.isNotEmpty;
                           
-                          final rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
-                          final lang = _getLanguageName(rawLang);
                           final title = track.metadata['title'] ?? '';
+                          String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+                          
+                          if (rawLang == 'UND' || rawLang.isEmpty) {
+                            final upTitle = title.toUpperCase();
+                            if (upTitle.contains('ENG')) rawLang = 'ENG';
+                            else if (upTitle.contains('ITA')) rawLang = 'ITA';
+                            else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
+                            else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
+                            else if (upTitle.contains('SPA')) rawLang = 'SPA';
+                            else if (upTitle.contains('JPN')) rawLang = 'JPN';
+                            else if (upTitle.contains('KOR')) rawLang = 'KOR';
+                            else if (upTitle.contains('HIN')) rawLang = 'HIN';
+                          }
+
+                          final lang = _getLanguageName(rawLang);
                           final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
                           
                           return ListTile(
@@ -1197,7 +1235,7 @@ class SubtitleTrackSelector extends StatelessWidget {
                             ),
                             trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
                             onTap: () {
-                              controller.setSubtitleTracks([track.index]);
+                              controller.setSubtitleTracks([listPosition]);
                               Navigator.pop(context);
                             },
                           );
