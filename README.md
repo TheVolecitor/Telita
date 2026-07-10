@@ -7,7 +7,7 @@
   <b>A Cross-Platform Media Player Built for Performance!</b>
   <br/><br/>
   
-  Offering a native player, torrent/p2p streaming, multi-profiles, and cloud sync. Built to deliver a consistent and premium media experience across desktop, mobile, televisions, and the web.
+  Offering a native player, torrent/p2p and usenet/nntp streaming, multi-profiles, and cloud sync. Built to deliver a consistent and premium media experience across desktop, mobile, televisions, and the web.
   
   <br/><br/>
 
