@@ -10,6 +10,7 @@ import '../../bloc/overlay_ui_bloc.dart';
 import 'widgets/clock_widget.dart';
 import '../../../entity/playback_state.dart';
 import '../../../entity/player_state.dart';
+import '../../../entity/media_segment.dart';
 import '../../../utils/string_utils.dart';
 import '../../media_ui_service/media3_ui_controller.dart';
 import 'widgets/custom_info_text_widget.dart';

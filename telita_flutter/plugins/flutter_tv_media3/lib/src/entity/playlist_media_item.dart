@@ -1,4 +1,5 @@
 import 'epg_channel.dart';
+import 'media_segment.dart';
 
 /// An asynchronous callback function used to obtain a direct, playable media link.
 ///
@@ -138,6 +139,9 @@ class PlaylistMediaItem {
   /// item if it is a TV channel.
   final List<EpgProgram>? programs;
 
+  /// A list of intro/outro/recap segments for skipping.
+  final List<MediaSegment>? segments;
+
   ///disable or enable update WatchTime in UI
   final bool updateWatchTime;
 
@@ -172,6 +176,7 @@ class PlaylistMediaItem {
     this.getDirectLink,
     this.mediaItemType = MediaItemType.video,
     this.programs,
+    this.segments,
     this.updateWatchTime = true,
     this.media3PreviewConfig,
   });
@@ -315,6 +320,8 @@ class PlaylistMediaItem {
       getDirectLink: getDirectLink ?? this.getDirectLink,
       saveWatchTime: saveWatchTime ?? this.saveWatchTime,
       mediaItemType: mediaItemType ?? this.mediaItemType,
+      programs: programs ?? this.programs,
+      segments: segments ?? this.segments,
       updateWatchTime: updateWatchTime ?? this.updateWatchTime,
       media3PreviewConfig: media3PreviewConfig ?? this.media3PreviewConfig,
     );

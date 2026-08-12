@@ -48,6 +48,7 @@ export 'src/entity/player_settings.dart';
 export 'src/entity/media_metadata.dart';
 export 'src/entity/playback_state.dart';
 export 'src/entity/media_track.dart';
+export 'src/entity/media_segment.dart';
 export 'src/entity/streaming_metadata.dart';
 export 'src/entity/epg_channel.dart';
 export 'src/const/basic_colors.dart';

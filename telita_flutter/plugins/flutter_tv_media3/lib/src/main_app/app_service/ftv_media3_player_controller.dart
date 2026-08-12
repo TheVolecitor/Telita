@@ -937,6 +937,7 @@ class FtvMedia3PlayerController {
 
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(playlist[initialIndex].url),
+        httpHeaders: playlist[initialIndex].headers ?? const <String, String>{},
       );
 
       _videoPlayerController!.addListener(() {

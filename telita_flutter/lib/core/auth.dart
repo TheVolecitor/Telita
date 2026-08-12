@@ -233,7 +233,9 @@ class AuthService extends ValueNotifier<AuthState> {
         body: jsonEncode({'email': email, 'password': password, if (name != null) 'name': name}),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode != 200) return {'error': data['error'] ?? 'Registration failed'};
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return {'error': data['error'] ?? 'Registration failed'};
+      }
       await _applyLoginResponse(data);
       return {};
     } catch (e) {
@@ -249,7 +251,9 @@ class AuthService extends ValueNotifier<AuthState> {
         body: jsonEncode({'email': email, 'password': password}),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode != 200) return {'error': data['error'] ?? 'Login failed'};
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        return {'error': data['error'] ?? 'Login failed'};
+      }
       await _applyLoginResponse(data);
       return {};
     } catch (e) {
@@ -352,7 +356,7 @@ class AuthService extends ValueNotifier<AuthState> {
         }),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode != 201) return {'error': data['error'] ?? 'Failed to add profile'};
+      if (res.statusCode < 200 || res.statusCode >= 300) return {'error': data['error'] ?? 'Failed to add profile'};
       
       final newProfile = AuthProfile.fromJson(data);
       updateProfiles([...value.profiles, newProfile]);
@@ -379,7 +383,7 @@ class AuthService extends ValueNotifier<AuthState> {
         }),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode != 200) return {'error': data['error'] ?? 'Failed to update profile'};
+      if (res.statusCode < 200 || res.statusCode >= 300) return {'error': data['error'] ?? 'Failed to update profile'};
       
       final updatedProfile = AuthProfile.fromJson(data);
       final updatedList = value.profiles.map((p) => p.id == id ? updatedProfile : p).toList();
@@ -399,7 +403,7 @@ class AuthService extends ValueNotifier<AuthState> {
         headers: headers(),
       );
       final data = jsonDecode(res.body);
-      if (res.statusCode != 200) return {'error': data['error'] ?? 'Failed to delete profile'};
+      if (res.statusCode < 200 || res.statusCode >= 300) return {'error': data['error'] ?? 'Failed to delete profile'};
       
       final updatedList = value.profiles.where((p) => p.id != id).toList();
       updateProfiles(updatedList);
@@ -424,7 +428,7 @@ class AuthService extends ValueNotifier<AuthState> {
         Uri.parse('$defaultApiUrl/api/auth/me'),
         headers: {'Authorization': 'Bearer $token'},
       );
-      if (res.statusCode == 200) {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
         responseData = jsonDecode(res.body);
         responseData['token'] = token;
       } else {

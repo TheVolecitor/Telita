@@ -14,6 +14,16 @@ class AppSettings {
   bool rememberVolume;
   bool resumePrompt;
   String appTheme;
+  bool introSkipEnabled;
+  String introSkipProvider;
+  bool mdbListEnabled;
+  String mdbListApiKey;
+  bool mdbListShowImdb;
+  bool mdbListShowTomatoes;
+  bool mdbListShowMetacritic;
+  bool mdbListShowLetterboxd;
+  bool mdbListShowTrakt;
+  bool mdbListShowScore;
 
   AppSettings({
     this.subtitleEnabled = true,
@@ -28,6 +38,16 @@ class AppSettings {
     this.rememberVolume = true,
     this.resumePrompt = true,
     this.appTheme = 'default',
+    this.introSkipEnabled = true,
+    this.introSkipProvider = 'introdb.app',
+    this.mdbListEnabled = true,
+    this.mdbListApiKey = '',
+    this.mdbListShowImdb = true,
+    this.mdbListShowTomatoes = true,
+    this.mdbListShowMetacritic = true,
+    this.mdbListShowLetterboxd = true,
+    this.mdbListShowTrakt = true,
+    this.mdbListShowScore = true,
   });
 
   factory AppSettings.fromPrefs(SharedPreferences prefs) {
@@ -44,6 +64,16 @@ class AppSettings {
       rememberVolume: prefs.getBool('rememberVolume') ?? true,
       resumePrompt: prefs.getBool('resumePrompt') ?? true,
       appTheme: prefs.getString('appTheme') ?? 'default',
+      introSkipEnabled: prefs.getBool('introSkipEnabled') ?? true,
+      introSkipProvider: prefs.getString('introSkipProvider') ?? 'introdb.app',
+      mdbListEnabled: prefs.getBool('mdbListEnabled') ?? true,
+      mdbListApiKey: prefs.getString('mdbListApiKey') ?? '',
+      mdbListShowImdb: prefs.getBool('mdbListShowImdb') ?? true,
+      mdbListShowTomatoes: prefs.getBool('mdbListShowTomatoes') ?? true,
+      mdbListShowMetacritic: prefs.getBool('mdbListShowMetacritic') ?? true,
+      mdbListShowLetterboxd: prefs.getBool('mdbListShowLetterboxd') ?? true,
+      mdbListShowTrakt: prefs.getBool('mdbListShowTrakt') ?? true,
+      mdbListShowScore: prefs.getBool('mdbListShowScore') ?? true,
     );
   }
 
@@ -60,6 +90,16 @@ class AppSettings {
     prefs.setBool('rememberVolume', rememberVolume);
     prefs.setBool('resumePrompt', resumePrompt);
     prefs.setString('appTheme', appTheme);
+    prefs.setBool('introSkipEnabled', introSkipEnabled);
+    prefs.setString('introSkipProvider', introSkipProvider);
+    prefs.setBool('mdbListEnabled', mdbListEnabled);
+    prefs.setString('mdbListApiKey', mdbListApiKey);
+    prefs.setBool('mdbListShowImdb', mdbListShowImdb);
+    prefs.setBool('mdbListShowTomatoes', mdbListShowTomatoes);
+    prefs.setBool('mdbListShowMetacritic', mdbListShowMetacritic);
+    prefs.setBool('mdbListShowLetterboxd', mdbListShowLetterboxd);
+    prefs.setBool('mdbListShowTrakt', mdbListShowTrakt);
+    prefs.setBool('mdbListShowScore', mdbListShowScore);
   }
 }
 
@@ -88,6 +128,16 @@ class SettingsService extends ValueNotifier<AppSettings> {
     if (key == 'rememberVolume' && val is bool) current.rememberVolume = val;
     if (key == 'resumePrompt' && val is bool) current.resumePrompt = val;
     if (key == 'appTheme' && val is String) current.appTheme = val;
+    if (key == 'introSkipEnabled' && val is bool) current.introSkipEnabled = val;
+    if (key == 'introSkipProvider' && val is String) current.introSkipProvider = val;
+    if (key == 'mdbListEnabled' && val is bool) current.mdbListEnabled = val;
+    if (key == 'mdbListApiKey' && val is String) current.mdbListApiKey = val;
+    if (key == 'mdbListShowImdb' && val is bool) current.mdbListShowImdb = val;
+    if (key == 'mdbListShowTomatoes' && val is bool) current.mdbListShowTomatoes = val;
+    if (key == 'mdbListShowMetacritic' && val is bool) current.mdbListShowMetacritic = val;
+    if (key == 'mdbListShowLetterboxd' && val is bool) current.mdbListShowLetterboxd = val;
+    if (key == 'mdbListShowTrakt' && val is bool) current.mdbListShowTrakt = val;
+    if (key == 'mdbListShowScore' && val is bool) current.mdbListShowScore = val;
 
     current.save(prefs);
     value = current;

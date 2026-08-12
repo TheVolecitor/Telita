@@ -5,14 +5,18 @@ import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import '../core/addon_client.dart';
+import '../core/settings.dart';
+import '../core/mdblist_client.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_tv_media3/flutter_tv_media3.dart';
 import 'badges.dart';
 import 'spinning_logo.dart';
 class DetailScreen extends StatefulWidget {
   final MetaPreview item;
   final String type; // "movie" | "series"
   final VoidCallback onBack;
-  final Function(String url, String type, String id) onPlay;
+  final Function(String url, String type, String id, {Map<String, String>? headers, List<MediaSegment>? segments}) onPlay;
 
   const DetailScreen({
     super.key,
@@ -28,7 +32,11 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   MetaPreview? _meta;
+  MdbListRatings? _mdbListRatings;
   List<StreamModel> _streams = [];
+  List<InstalledAddon> _streamAddons = [];
+  Set<String> _loadingAddonNames = {};
+  Map<String, int> _addonStreamCounts = {};
   bool _loading = true;
   bool _streamsLoading = false;
   String? _resolvingHash;
@@ -53,6 +61,8 @@ class _DetailScreenState extends State<DetailScreen> {
     await AddonRegistry.instance.init();
     final m = await AddonRegistry.instance.getMeta(widget.type, widget.item.id);
 
+    _loadMdbListRatings();
+
     if (mounted) {
       setState(() {
         _meta = m ?? widget.item;
@@ -76,17 +86,39 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _fetchStreams(String videoId) async {
+    final addons = AddonRegistry.instance.getStreamAddons(widget.type, videoId);
     setState(() {
-      _streamsLoading = true;
+      _streamAddons = addons;
+      _loadingAddonNames = addons.map((a) => a.manifest.name).toSet();
+      _addonStreamCounts = {};
       _streams = [];
+      _streamsLoading = addons.isNotEmpty;
     });
 
-    final s = await AddonRegistry.instance.getStreams(widget.type, videoId);
+    if (addons.isEmpty) return;
 
-    if (mounted) {
-      setState(() {
-        _streams = s;
-        _streamsLoading = false;
+    for (final addon in addons) {
+      AddonRegistry.instance.getStreamsFromAddon(addon, widget.type, videoId).then((newStreams) {
+        if (!mounted) return;
+        setState(() {
+          _loadingAddonNames.remove(addon.manifest.name);
+          _addonStreamCounts[addon.manifest.name] = newStreams.length;
+          if (newStreams.isNotEmpty) {
+            _streams.addAll(newStreams);
+          }
+          if (_loadingAddonNames.isEmpty) {
+            _streamsLoading = false;
+          }
+        });
+      }).catchError((e) {
+        if (!mounted) return;
+        setState(() {
+          _loadingAddonNames.remove(addon.manifest.name);
+          _addonStreamCounts[addon.manifest.name] = 0;
+          if (_loadingAddonNames.isEmpty) {
+            _streamsLoading = false;
+          }
+        });
       });
     }
   }
@@ -108,32 +140,120 @@ class _DetailScreenState extends State<DetailScreen> {
     return null;
   }
 
+  Future<List<MediaSegment>?> _fetchSkipSegments(String videoId) async {
+    final cfg = SettingsService.instance.value;
+    if (!cfg.introSkipEnabled) {
+      print('[INTROSKIP] Feature disabled in settings');
+      return null;
+    }
+
+    final parts = videoId.split(':');
+    final imdbId = parts.isNotEmpty ? parts[0] : videoId;
+    final season = parts.length > 1 ? parts[1] : null;
+    final episode = parts.length > 2 ? parts[2] : null;
+
+    final provider = cfg.introSkipProvider; // 'introdb.app' or 'theintrodb.org'
+    print('[INTROSKIP] Fetching skip segments for ID: $videoId (imdb: $imdbId, season: $season, ep: $episode) using $provider');
+
+    try {
+      if (provider == 'introdb.app') {
+        String url = 'https://api.introdb.app/segments?imdb_id=$imdbId';
+        if (season != null && episode != null) {
+          url += '&season=$season&episode=$episode';
+        }
+        print('[INTROSKIP] Request URL: $url');
+        final res = await http.get(Uri.parse(url));
+        print('[INTROSKIP] Response HTTP status: ${res.statusCode}');
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          if (data is List) {
+            final list = data.map((json) {
+              return MediaSegment.fromJson(json as Map<String, dynamic>, json['segment_type'] ?? 'unknown');
+            }).toList();
+            print('[INTROSKIP] segments retrieved (${list.length} found):');
+            for (var seg in list) {
+              print('  -> [${seg.type}] start: ${seg.startSec}s, end: ${seg.endSec}s');
+            }
+            return list;
+          }
+        }
+      } else if (provider == 'theintrodb.org') {
+        String url = 'https://api.theintrodb.org/v3/media?imdb_id=$imdbId';
+        if (season != null && episode != null) {
+          url += '&season=$season&episode=$episode';
+        }
+        print('[INTROSKIP] Request URL: $url');
+        final res = await http.get(Uri.parse(url));
+        print('[INTROSKIP] Response HTTP status: ${res.statusCode}');
+        if (res.statusCode == 200) {
+          final data = jsonDecode(res.body);
+          final segments = <MediaSegment>[];
+          if (data['intro'] != null) {
+            for (var i in data['intro']) segments.add(MediaSegment.fromJson(i, 'intro'));
+          }
+          if (data['recap'] != null) {
+            for (var r in data['recap']) segments.add(MediaSegment.fromJson(r, 'recap'));
+          }
+          if (data['credits'] != null) {
+            for (var c in data['credits']) segments.add(MediaSegment.fromJson(c, 'credits'));
+          }
+          if (data['preview'] != null) {
+            for (var p in data['preview']) segments.add(MediaSegment.fromJson(p, 'preview'));
+          }
+          print('[INTROSKIP] segments retrieved (${segments.length} found):');
+          for (var seg in segments) {
+            print('  -> [${seg.type}] start: ${seg.startSec}s, end: ${seg.endSec}s');
+          }
+          return segments;
+        }
+      }
+    } catch (e) {
+      print('[INTROSKIP] Error fetching intro skip segments: $e');
+    }
+    print('[INTROSKIP] segments retrieved (0 segments found)');
+    return null;
+  }
+
   void _handleStream(StreamModel stream) async {
     final subtitleQueryId = widget.type == "movie"
         ? widget.item.id
         : _selectedVideoId;
+    final headers = stream.behaviorHints?.proxyHeaders?.request;
+
+    // Show a loading indicator if resolving or fetching segments takes time
+    setState(() {
+      _resolvingHash = stream.infoHash; // We just re-use this to show the spinner
+    });
+
+    List<MediaSegment>? segments;
+    if (widget.type == "movie") {
+      segments = await _fetchSkipSegments(widget.item.id);
+    } else {
+      segments = await _fetchSkipSegments(_selectedVideoId);
+    }
+
     if (stream.url != null) {
-      widget.onPlay(stream.url!, widget.type, subtitleQueryId);
+      setState(() => _resolvingHash = null);
+      widget.onPlay(stream.url!, widget.type, subtitleQueryId, headers: headers, segments: segments);
     } else if (stream.externalUrl != null) {
+      setState(() => _resolvingHash = null);
       final uri = Uri.parse(stream.externalUrl!);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } else if (stream.nzbUrl != null && stream.servers != null && stream.servers!.isNotEmpty) {
+      setState(() => _resolvingHash = null);
       final encodedUrl = Uri.encodeComponent(stream.nzbUrl!);
       final encodedServer = Uri.encodeComponent(stream.servers!.first);
       final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
-      widget.onPlay(playUrl, widget.type, subtitleQueryId);
+      widget.onPlay(playUrl, widget.type, subtitleQueryId, segments: segments);
     } else if (stream.infoHash != null) {
-      setState(() {
-        _resolvingHash = stream.infoHash;
-      });
       final url = await _resolveStreamUrl(stream.infoHash!);
       setState(() {
         _resolvingHash = null;
       });
       if (url != null) {
-        widget.onPlay(url, widget.type, subtitleQueryId);
+        widget.onPlay(url, widget.type, subtitleQueryId, segments: segments);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -296,7 +416,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
                               const SizedBox(height: 12),
 
-                              // Badges / Meta row
+                               // Badges / Meta row
                               Wrap(
                                 spacing: 12,
                                 runSpacing: 12,
@@ -310,6 +430,9 @@ class _DetailScreenState extends State<DetailScreen> {
                                     _buildMetaText('⭐ ${_meta!.imdbRating}'),
                                 ],
                               ),
+
+                              // MDBList Ratings
+                              _buildMdbListBadges(),
 
                               // Genres
                               if (_meta?.genres != null &&
@@ -451,13 +574,123 @@ class _DetailScreenState extends State<DetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.04),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white10),
       ),
       child: Text(
         text,
         style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+    );
+  }
+
+  void _loadMdbListRatings() async {
+    final cfg = SettingsService.instance.value;
+    if (cfg.mdbListEnabled && cfg.mdbListApiKey.isNotEmpty) {
+      final ratings = await MdbListClient.fetchRatings(widget.item.id, cfg.mdbListApiKey);
+      if (mounted) {
+        setState(() {
+          _mdbListRatings = ratings;
+        });
+      }
+    }
+  }
+
+  Widget _buildMdbListBadges() {
+    final cfg = SettingsService.instance.value;
+    if (!cfg.mdbListEnabled || _mdbListRatings == null || cfg.mdbListApiKey.isEmpty) return const SizedBox.shrink();
+
+    final widgets = <Widget>[];
+
+    // Overall MDBList Score
+    if (cfg.mdbListShowScore && _mdbListRatings!.overallScore != null) {
+      widgets.add(_buildRatingBadge('assets/logos/mdblist.svg', '${_mdbListRatings!.overallScore}%'));
+    }
+
+    // IMDb
+    final imdb = _mdbListRatings!.getRating('imdb');
+    if (cfg.mdbListShowImdb && imdb?.value != null) {
+      widgets.add(_buildRatingBadge('assets/logos/imdb.svg', '${imdb!.value}'));
+    }
+
+    // Rotten Tomatoes
+    final tomatoes = _mdbListRatings!.getRating('tomatoes');
+    if (cfg.mdbListShowTomatoes && tomatoes?.value != null) {
+      widgets.add(_buildRatingBadge('assets/logos/tomatoes.svg', '${tomatoes!.value}%'));
+    }
+
+    // Metacritic
+    final meta = _mdbListRatings!.getRating('metacritic');
+    if (cfg.mdbListShowMetacritic && meta?.value != null) {
+      widgets.add(_buildRatingBadge('assets/logos/metacritic.svg', '${meta!.value}/100'));
+    }
+
+    // Letterboxd
+    final letterboxd = _mdbListRatings!.getRating('letterboxd');
+    if (cfg.mdbListShowLetterboxd && letterboxd?.value != null) {
+      widgets.add(_buildRatingBadge('assets/logos/letterboxd.svg', '${letterboxd!.value}'));
+    }
+
+    // Trakt
+    final trakt = _mdbListRatings!.getRating('trakt');
+    if (cfg.mdbListShowTrakt && trakt?.value != null) {
+      widgets.add(_buildRatingBadge('assets/logos/trakt.svg', '${trakt!.value}%'));
+    }
+
+    if (widgets.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RATINGS (MDBList)',
+            style: TextStyle(
+              color: Colors.white30,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: widgets,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRatingBadge(String svgPath, String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SvgPicture.asset(
+            svgPath,
+            width: 16,
+            height: 16,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -536,10 +769,13 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Widget _buildStreamsPanel(bool isPortrait) {
     final list = _filteredStreams();
-    final addons = _uniqueAddons();
+    final addonNames = _streamAddons.map((a) => a.manifest.name).toList();
+    if (addonNames.isEmpty && _uniqueAddons().isNotEmpty) {
+      addonNames.addAll(_uniqueAddons());
+    }
 
     Widget listWidget;
-    if (_streamsLoading) {
+    if (list.isEmpty && _loadingAddonNames.isNotEmpty) {
       listWidget = ListView.builder(
         shrinkWrap: isPortrait,
         physics: isPortrait ? const NeverScrollableScrollPhysics() : null,
@@ -550,9 +786,9 @@ class _DetailScreenState extends State<DetailScreen> {
       listWidget = Container(
         height: isPortrait ? 200 : null,
         alignment: Alignment.center,
-        child: const Text(
-          'No streams found. Check your active addons.',
-          style: TextStyle(color: Colors.white30),
+        child: Text(
+          _loadingAddonNames.isNotEmpty ? 'Searching for streams...' : 'No streams found. Check your active addons.',
+          style: const TextStyle(color: Colors.white30),
         ),
       );
     } else {
@@ -568,57 +804,7 @@ class _DetailScreenState extends State<DetailScreen> {
             stream: s,
             resolving: resolving,
             autofocus: idx == 0,
-            onTap: () async {
-              if (s.url != null && s.url!.isNotEmpty) {
-                widget.onPlay(s.url!, widget.type, widget.item.id);
-              } else if (s.nzbUrl != null && s.servers != null && s.servers!.isNotEmpty) {
-                final encodedUrl = Uri.encodeComponent(s.nzbUrl!);
-                final encodedServer = Uri.encodeComponent(s.servers!.first);
-                final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
-                
-                setState(() => _resolvingHash = s.nzbUrl);
-                
-                try {
-                  // Resolve 302 redirect here so the UI shows a spinner while the Core processes the NZB
-                  final request = await HttpClient().headUrl(Uri.parse(playUrl)).timeout(const Duration(seconds: 15));
-                  request.followRedirects = false;
-                  final response = await request.close();
-                  
-                  String finalUrl = playUrl;
-                  if (response.statusCode >= 300 && response.statusCode < 400) {
-                    final location = response.headers.value('location');
-                    if (location != null) finalUrl = location;
-                  }
-                  
-                  if (mounted) {
-                    widget.onPlay(finalUrl, widget.type, widget.item.id);
-                    // Keep spinner active during screen transition
-                    Future.delayed(const Duration(milliseconds: 500), () {
-                      if (mounted) setState(() => _resolvingHash = null);
-                    });
-                  }
-                } catch (e) {
-                  print("NZB Resolve error: $e");
-                  if (mounted) {
-                    widget.onPlay(playUrl, widget.type, widget.item.id);
-                    setState(() => _resolvingHash = null);
-                  }
-                }
-              } else if (s.infoHash != null && s.infoHash!.isNotEmpty) {
-                setState(() => _resolvingHash = s.infoHash);
-                final url = await _resolveStreamUrl(s.infoHash!);
-
-                if (url != null) {
-                  widget.onPlay(url, widget.type, widget.item.id);
-                  // Keep spinner active during screen transition
-                  Future.delayed(const Duration(milliseconds: 500), () {
-                    if (mounted) setState(() => _resolvingHash = null);
-                  });
-                } else {
-                  if (mounted) setState(() => _resolvingHash = null);
-                }
-              }
-            },
+            onTap: () => _handleStream(s),
           );
         },
       );
@@ -655,46 +841,53 @@ class _DetailScreenState extends State<DetailScreen> {
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   const SizedBox(width: 8),
-                  if (!_streamsLoading)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white10,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${list.length}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white70,
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${list.length}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.white70,
                       ),
                     ),
+                  ),
                 ],
               ),
-              if (addons.isNotEmpty) ...[
+              if (addonNames.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      for (int idx = 0; idx < addons.length + 1; idx++) ...[
-                        Builder(builder: (context) {
-                          final addon = idx == 0 ? "all" : addons[idx - 1];
-                          final isSelected = _selectedAddon == addon;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 8.0),
-                            child: AddonFilterTab(
-                              title: addon == "all" ? "All Addons" : addon,
-                              isSelected: isSelected,
-                              onTap: () => setState(() => _selectedAddon = addon),
-                            ),
-                          );
-                        }),
-                      ]
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: AddonFilterTab(
+                          title: 'All Addons',
+                          count: _streams.length,
+                          isLoading: _loadingAddonNames.isNotEmpty,
+                          isSelected: _selectedAddon == 'all',
+                          onTap: () => setState(() => _selectedAddon = 'all'),
+                        ),
+                      ),
+                      for (final addonName in addonNames) ...[
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: AddonFilterTab(
+                            title: addonName,
+                            count: _addonStreamCounts[addonName],
+                            isLoading: _loadingAddonNames.contains(addonName),
+                            isSelected: _selectedAddon == addonName,
+                            onTap: () => setState(() => _selectedAddon = addonName),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -901,12 +1094,16 @@ class AddonFilterTab extends StatefulWidget {
   final String title;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isLoading;
+  final int? count;
 
   const AddonFilterTab({
     super.key,
     required this.title,
     required this.isSelected,
     required this.onTap,
+    this.isLoading = false,
+    this.count,
   });
 
   @override
@@ -918,6 +1115,8 @@ class _AddonFilterTabState extends State<AddonFilterTab> {
 
   @override
   Widget build(BuildContext context) {
+    final displayTitle = widget.count != null ? '${widget.title} (${widget.count})' : widget.title;
+
     return AnimatedScale(
       scale: _isFocused ? 1.05 : 1.0,
       duration: const Duration(milliseconds: 200),
@@ -931,7 +1130,7 @@ class _AddonFilterTabState extends State<AddonFilterTab> {
           onHover: (val) => setState(() => _isFocused = val),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: _isFocused 
                   ? Colors.white 
@@ -944,14 +1143,30 @@ class _AddonFilterTabState extends State<AddonFilterTab> {
                 width: 1.5,
               ),
             ),
-            child: Text(
-              widget.title,
-              style: TextStyle(
-                color: _isFocused ? Colors.black : (widget.isSelected ? Theme.of(context).colorScheme.primary : Colors.white70),
-                fontWeight: _isFocused || widget.isSelected ? FontWeight.bold : FontWeight.w600,
-                fontSize: 13,
-                letterSpacing: 0.5,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  displayTitle,
+                  style: TextStyle(
+                    color: _isFocused ? Colors.black : (widget.isSelected ? Theme.of(context).colorScheme.primary : Colors.white70),
+                    fontWeight: _isFocused || widget.isSelected ? FontWeight.bold : FontWeight.w600,
+                    fontSize: 13,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                if (widget.isLoading) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.0,
+                      color: _isFocused ? Colors.black : Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),

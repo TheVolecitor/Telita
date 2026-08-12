@@ -92,9 +92,119 @@ type VolumeHeaderInfo struct {
 	SegmentSize      int64  // actual length of decoded segment data
 }
 
-// ParseRARHeaders parses the RAR5 block headers from the first segment of a
+// ParseRARHeaders parses the RAR block headers (RAR4 or RAR5) from the first segment of a
 // volume and extracts the file header information needed for byte mapping.
 func ParseRARHeaders(data []byte) (*VolumeHeaderInfo, error) {
+	info, err := ParseRAR5Headers(data)
+	if err != nil {
+		info, err = ParseRAR4Headers(data)
+	}
+	return info, err
+}
+
+// ParseRAR4Headers parses older RAR4 format block headers
+func ParseRAR4Headers(data []byte) (*VolumeHeaderInfo, error) {
+	if len(data) < 7 {
+		return nil, errors.New("data too short for RAR4 signature")
+	}
+
+	rar4Sig := []byte{0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00}
+	sigPos := -1
+	for i := 0; i <= len(data)-7; i++ {
+		match := true
+		for j := 0; j < 7; j++ {
+			if data[i+j] != rar4Sig[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			sigPos = i
+			break
+		}
+	}
+	if sigPos < 0 {
+		return nil, errors.New("RAR4 signature not found")
+	}
+
+	pos := sigPos + 7
+	info := &VolumeHeaderInfo{}
+
+	for pos < len(data)-7 {
+		blockStart := pos
+		// CRC: 2 bytes, Type: 1 byte, Flags: 2 bytes, Size: 2 bytes
+		headerType := data[pos+2]
+		flags := binary.LittleEndian.Uint16(data[pos+3 : pos+5])
+		headerSize := binary.LittleEndian.Uint16(data[pos+5 : pos+7])
+
+		var packSize int64
+		// If ADD_SIZE flag is set, read PackSize
+		if flags&0x8000 != 0 {
+			if pos+11 > len(data) {
+				break
+			}
+			packSize = int64(binary.LittleEndian.Uint32(data[pos+7 : pos+11]))
+		}
+
+		if headerType == 0x74 { // File Header
+			if pos+32 > len(data) {
+				break
+			}
+			unpackedSize := int64(binary.LittleEndian.Uint32(data[pos+11 : pos+15]))
+			method := data[pos+25]
+			nameSize := int(binary.LittleEndian.Uint16(data[pos+26 : pos+28]))
+
+			// If High Size flag is set
+			if flags&0x0100 != 0 {
+				if pos+32+8 > len(data) {
+					break
+				}
+				highPackSize := int64(binary.LittleEndian.Uint32(data[pos+32 : pos+36]))
+				highUnpackSize := int64(binary.LittleEndian.Uint32(data[pos+36 : pos+40]))
+				packSize = (highPackSize << 32) | packSize
+				unpackedSize = (highUnpackSize << 32) | unpackedSize
+
+				if pos+40+nameSize <= len(data) {
+					info.ArchivedFilename = sanitizeRARFilename(string(data[pos+40 : pos+40+nameSize]))
+				}
+			} else {
+				if pos+32+nameSize <= len(data) {
+					info.ArchivedFilename = sanitizeRARFilename(string(data[pos+32 : pos+32+nameSize]))
+				}
+			}
+
+			if info.ArchivedFilename == "" || unpackedSize > info.UnpackedSize {
+				info.DataOffset = int64(blockStart) + int64(headerSize)
+				info.PackedSize = packSize
+				info.UnpackedSize = unpackedSize
+				info.IsStoreMode = method == 0x30 // 0x30 (48) is Store mode in RAR4
+				info.HasFileHeader = true
+			}
+		}
+
+		nextBlock := int64(blockStart) + int64(headerSize)
+		if flags&0x8000 != 0 {
+			nextBlock += packSize
+		}
+		if nextBlock <= int64(blockStart) {
+			break
+		}
+		pos = int(nextBlock)
+	}
+
+	if !info.HasFileHeader {
+		return nil, errors.New("no file header found in RAR4 data")
+	}
+
+	log.Printf("[RAR-Parse] RAR4 Selected largest file: %s, packed=%d, unpacked=%d, store=%v, dataOffset=%d",
+		info.ArchivedFilename, info.PackedSize, info.UnpackedSize, info.IsStoreMode, info.DataOffset)
+
+	return info, nil
+}
+
+// ParseRAR5Headers parses the RAR5 block headers from the first segment of a
+// volume and extracts the file header information needed for byte mapping.
+func ParseRAR5Headers(data []byte) (*VolumeHeaderInfo, error) {
 	if len(data) < 8 {
 		return nil, errors.New("data too short for RAR signature")
 	}

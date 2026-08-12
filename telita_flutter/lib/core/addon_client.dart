@@ -229,6 +229,42 @@ class SearchResultGroup {
   SearchResultGroup({required this.addonName, required this.catalogName, required this.results});
 }
 
+class ProxyHeaders {
+  final Map<String, String>? request;
+  final Map<String, String>? response;
+
+  ProxyHeaders({this.request, this.response});
+
+  factory ProxyHeaders.fromJson(Map<String, dynamic> json) {
+    Map<String, String>? parseMap(dynamic mapObj) {
+      if (mapObj == null || mapObj is! Map) return null;
+      return mapObj.map((key, value) => MapEntry(key.toString(), value.toString()));
+    }
+    return ProxyHeaders(
+      request: parseMap(json['request']),
+      response: parseMap(json['response']),
+    );
+  }
+}
+
+class BehaviorHints {
+  final bool? notWebReady;
+  final String? bingeGroup;
+  final ProxyHeaders? proxyHeaders;
+
+  BehaviorHints({this.notWebReady, this.bingeGroup, this.proxyHeaders});
+
+  factory BehaviorHints.fromJson(Map<String, dynamic> json) {
+    return BehaviorHints(
+      notWebReady: json['notWebReady'],
+      bingeGroup: json['bingeGroup']?.toString(),
+      proxyHeaders: json['proxyHeaders'] != null
+          ? ProxyHeaders.fromJson(json['proxyHeaders'])
+          : null,
+    );
+  }
+}
+
 class StreamModel {
   final String? name;
   final String? description;
@@ -241,6 +277,7 @@ class StreamModel {
   final String? addonName;
   final String? nzbUrl;
   final List<String>? servers;
+  final BehaviorHints? behaviorHints;
 
   StreamModel({
     this.name,
@@ -254,6 +291,7 @@ class StreamModel {
     this.addonName,
     this.nzbUrl,
     this.servers,
+    this.behaviorHints,
   });
 
   factory StreamModel.fromJson(Map<String, dynamic> json, {String? addonName}) {
@@ -269,6 +307,9 @@ class StreamModel {
       addonName: addonName,
       nzbUrl: json['nzbUrl'],
       servers: json['servers'] != null ? List<String>.from(json['servers']) : null,
+      behaviorHints: json['behaviorHints'] != null 
+          ? BehaviorHints.fromJson(json['behaviorHints']) 
+          : null,
     );
   }
 }
@@ -605,22 +646,27 @@ class AddonRegistry {
     return null;
   }
 
+  List<InstalledAddon> getStreamAddons(String type, String id) {
+    return getInstalled().where((addon) => _supportsResource(addon, "stream", type, id)).toList();
+  }
+
+  Future<List<StreamModel>> getStreamsFromAddon(InstalledAddon addon, String type, String id) async {
+    try {
+      final url = "${addon.transportUrl}/stream/$type/$id.json";
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) return <StreamModel>[];
+      final data = await compute(_decodeJsonMap, res.body);
+      final List<dynamic> streams = data['streams'] ?? [];
+      return streams.map((s) => StreamModel.fromJson(s, addonName: addon.manifest.name)).toList();
+    } catch (e) {
+      print("Error getting streams from ${addon.manifest.name}: $e");
+      return <StreamModel>[];
+    }
+  }
+
   Future<List<StreamModel>> getStreams(String type, String id) async {
-    final addons = getInstalled();
-    final results = await Future.wait(addons.map((addon) async {
-      if (!_supportsResource(addon, "stream", type, id)) return <StreamModel>[];
-      try {
-        final url = "${addon.transportUrl}/stream/$type/$id.json";
-        final res = await http.get(Uri.parse(url));
-        if (res.statusCode != 200) return <StreamModel>[];
-        final data = await compute(_decodeJsonMap, res.body);
-        final List<dynamic> streams = data['streams'] ?? [];
-        return streams.map((s) => StreamModel.fromJson(s, addonName: addon.manifest.name)).toList();
-      } catch (e) {
-        print("Error getting streams: $e");
-        return <StreamModel>[];
-      }
-    }));
+    final addons = getStreamAddons(type, id);
+    final results = await Future.wait(addons.map((addon) => getStreamsFromAddon(addon, type, id)));
     return results.expand((x) => x).toList();
   }
 

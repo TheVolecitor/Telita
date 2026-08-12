@@ -29,6 +29,9 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  bool _obscureApiKey = true;
+  bool _showRatingToggles = false;
+
   @override
   void initState() {
     super.initState();
@@ -171,6 +174,112 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
 
                   const SizedBox(height: 24),
+                  _buildToggle(
+                    label: 'Enable Intro Skip',
+                    desc: 'Automatically fetch timestamps to skip intros and recaps',
+                    value: cfg.introSkipEnabled,
+                    onChanged: (val) => SettingsService.instance.set('introSkipEnabled', val),
+                  ),
+                  _buildTVDropdown<String>(
+                    label: 'Intro Skip Provider',
+                    desc: 'Service used to fetch skip timestamps',
+                    value: cfg.introSkipProvider,
+                    items: const [
+                      DropdownMenuItem(value: 'introdb.app', child: Text('IntroDB.app')),
+                      DropdownMenuItem(value: 'theintrodb.org', child: Text('TheIntroDB.org')),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) SettingsService.instance.set('introSkipProvider', val);
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                  // --- MDBLIST RATINGS ---
+                  _buildSectionHeader(Icons.star_outline, 'MDBList Ratings'),
+                  _buildToggle(
+                    label: 'Enable MDBList Ratings',
+                    desc: 'Fetch and display IMDb, Rotten Tomatoes, Metacritic & Trakt ratings',
+                    value: cfg.mdbListEnabled,
+                    onChanged: (val) => SettingsService.instance.set('mdbListEnabled', val),
+                  ),
+                  if (cfg.mdbListEnabled) ...[
+                    _buildTextField(
+                      label: 'MDBList API Key',
+                      desc: 'Get your key at mdblist.com/preferences',
+                      value: cfg.mdbListApiKey,
+                      onChanged: (val) => SettingsService.instance.set('mdbListApiKey', val.trim()),
+                    ),
+                    if (cfg.mdbListApiKey.isNotEmpty) ...[
+                    InkWell(
+                      onTap: () => setState(() => _showRatingToggles = !_showRatingToggles),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        decoration: BoxDecoration(
+                          border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05))),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.tune, color: Color(0xFF6C63FF), size: 18),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Customize Rating Displays',
+                                  style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                            Icon(
+                              _showRatingToggles ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              color: Colors.white70,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (_showRatingToggles) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(left: 16.0),
+                        child: Column(
+                          children: [
+                            _buildToggle(
+                              label: 'Show Overall MDBList Score',
+                              value: cfg.mdbListShowScore,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowScore', val),
+                            ),
+                            _buildToggle(
+                              label: 'Show IMDb Rating',
+                              value: cfg.mdbListShowImdb,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowImdb', val),
+                            ),
+                            _buildToggle(
+                              label: 'Show Rotten Tomatoes Score',
+                              value: cfg.mdbListShowTomatoes,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowTomatoes', val),
+                            ),
+                            _buildToggle(
+                              label: 'Show Metacritic Score',
+                              value: cfg.mdbListShowMetacritic,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowMetacritic', val),
+                            ),
+                            _buildToggle(
+                              label: 'Show Letterboxd Score',
+                              value: cfg.mdbListShowLetterboxd,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowLetterboxd', val),
+                            ),
+                            _buildToggle(
+                              label: 'Show Trakt Score',
+                              value: cfg.mdbListShowTrakt,
+                              onChanged: (val) => SettingsService.instance.set('mdbListShowTrakt', val),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ],
+
+                const SizedBox(height: 24),
 
                   // --- ACCOUNT ---
                   _buildSectionHeader(Icons.person_outline, 'Account'),
@@ -393,6 +502,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required String label,
+    String? desc,
+    required String value,
+    required ValueChanged<String> onChanged,
+  }) {
+    final controller = TextEditingController(text: value);
+    controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.03)))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+          if (desc != null) ...[
+            const SizedBox(height: 4),
+            Text(desc, style: const TextStyle(color: Colors.white30, fontSize: 12)),
+          ],
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            obscureText: _obscureApiKey,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Enter MDBList API Key',
+              hintStyle: const TextStyle(color: Colors.white30),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscureApiKey ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: Colors.white70,
+                  size: 20,
+                ),
+                onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Colors.white24),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFF6C63FF)),
+              ),
+            ),
+            onChanged: onChanged,
           ),
         ],
       ),

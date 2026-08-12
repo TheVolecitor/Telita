@@ -197,7 +197,6 @@ class _AppContainerState extends State<AppContainer> {
       }
     }
   }
-
   void _playStream(
     BuildContext context,
     String url,
@@ -207,6 +206,8 @@ class _AppContainerState extends State<AppContainer> {
     MetaPreview? item,
     String? name,
     String? poster,
+    Map<String, String>? headers,
+    List<MediaSegment>? segments,
   }) async {
     final mediaItemName =
         name ?? item?.name ?? _selectedDetailItem?.name ?? 'Unknown Content';
@@ -224,6 +225,14 @@ class _AppContainerState extends State<AppContainer> {
           .headUrl(Uri.parse(url))
           .timeout(const Duration(seconds: 5));
       request.followRedirects = false;
+      
+      // Pass user-agent if provided, to bypass basic blocks during redirect check
+      if (headers != null && headers.containsKey('User-Agent')) {
+        request.headers.set('User-Agent', headers['User-Agent']!);
+      } else if (headers != null && headers.containsKey('user-agent')) {
+        request.headers.set('User-Agent', headers['user-agent']!);
+      }
+
       final response = await request.close();
       print(' [PLAY] HEAD $url → HTTP ${response.statusCode}');
       if (response.statusCode >= 300 && response.statusCode < 400) {
@@ -255,6 +264,8 @@ class _AppContainerState extends State<AppContainer> {
         coverImg: mediaItemPoster,
         mediaItemType: MediaItemType.video,
         startPosition: initialPosition,
+        headers: headers,
+        segments: segments,
         saveWatchTime:
             ({
               required id,
@@ -522,12 +533,14 @@ class _AppContainerState extends State<AppContainer> {
                 item: _selectedDetailItem!,
                 type: _selectedDetailType!,
                 onBack: () => setState(() => _selectedDetailItem = null),
-                onPlay: (url, type, id) => _playStream(
+                onPlay: (url, type, id, {headers, segments}) => _playStream(
                   context,
                   url,
                   type,
                   id,
                   item: _selectedDetailItem,
+                  headers: headers,
+                  segments: segments,
                 ),
               ),
             ),

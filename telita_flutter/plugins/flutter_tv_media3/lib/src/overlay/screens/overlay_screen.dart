@@ -26,6 +26,7 @@ import 'components/widgets/player_error_widget.dart';
 import 'components/widgets/show_side_sheet.dart';
 import 'components/widgets/titled_panel_scaffold.dart';
 import 'components/widgets/brand_loading_indicator.dart';
+import 'components/skip_segment_widget.dart';
 
 /// The root widget for the player's UI overlay, running in a separate
 /// Flutter Engine.
@@ -135,9 +136,12 @@ class _OverlayScreenState extends State<OverlayScreen> {
         child: SizedBox(
           width: double.infinity,
           height: double.infinity,
-          child: BlocConsumer<OverlayUiBloc, OverlayUiState>(
-            listener: (BuildContext context, OverlayUiState state) {
-              if (state.playerPanel == PlayerPanel.sleep) {
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: BlocConsumer<OverlayUiBloc, OverlayUiState>(
+                  listener: (BuildContext context, OverlayUiState state) {
+                    if (state.playerPanel == PlayerPanel.sleep) {
                 _openPanel(playerPanel: PlayerPanel.none);
                 showSideSheet(
                   context: context,
@@ -403,6 +407,10 @@ class _OverlayScreenState extends State<OverlayScreen> {
                 ),
               );
             },
+          ),
+              ),
+              SkipSegmentWidget(controller: widget.controller),
+            ],
           ),
         ),
       ),

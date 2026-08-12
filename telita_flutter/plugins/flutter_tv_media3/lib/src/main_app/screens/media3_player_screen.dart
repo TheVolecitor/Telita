@@ -508,9 +508,131 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                   ),
                 ),
               ),
+            _WindowsSkipSegmentOverlay(
+              controller: widget.controller,
+              segments: widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
+                  ? widget.playlist[widget.initialIndex].segments
+                  : null,
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _WindowsSkipSegmentOverlay extends StatefulWidget {
+  final VideoPlayerController controller;
+  final List<MediaSegment>? segments;
+
+  const _WindowsSkipSegmentOverlay({
+    required this.controller,
+    required this.segments,
+  });
+
+  @override
+  State<_WindowsSkipSegmentOverlay> createState() => _WindowsSkipSegmentOverlayState();
+}
+
+class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> {
+  bool _isFocused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.segments == null || widget.segments!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: widget.controller,
+      builder: (context, value, child) {
+        if (!value.isInitialized || value.duration == Duration.zero) {
+          return const SizedBox.shrink();
+        }
+
+        final currentSecs = value.position.inSeconds;
+        MediaSegment? active;
+        for (final seg in widget.segments!) {
+          final start = seg.startSec ?? 0;
+          if (currentSecs >= start && currentSecs < seg.endSec) {
+            active = seg;
+            break;
+          }
+        }
+
+        if (active == null) {
+          return const SizedBox.shrink();
+        }
+
+        final label = active.type.toLowerCase() == 'intro'
+            ? 'Skip Intro'
+            : active.type.toLowerCase() == 'recap'
+                ? 'Skip Recap'
+                : active.type.toLowerCase() == 'credits'
+                    ? 'Skip Credits'
+                    : 'Skip ${active.type}';
+
+        return Align(
+          alignment: Alignment.bottomRight,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 110.0, right: 32.0),
+            child: Focus(
+              onFocusChange: (focused) => setState(() => _isFocused = focused),
+              onKeyEvent: (node, event) {
+                if (event is KeyDownEvent &&
+                    (event.logicalKey == LogicalKeyboardKey.select ||
+                     event.logicalKey == LogicalKeyboardKey.enter ||
+                     event.logicalKey == LogicalKeyboardKey.space)) {
+                  widget.controller.seekTo(Duration(seconds: active!.endSec));
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: InkWell(
+                onTap: () {
+                  widget.controller.seekTo(Duration(seconds: active!.endSec));
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: _isFocused ? AppTheme.fullFocusColor : Colors.black.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _isFocused ? Colors.white : Colors.white30,
+                      width: 2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.5),
+                        blurRadius: 8,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          color: _isFocused ? Colors.black : Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.skip_next,
+                        color: _isFocused ? Colors.black : Colors.white,
+                        size: 22,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

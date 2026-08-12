@@ -145,13 +145,14 @@ func ParseNZBFull(r io.Reader) (*NZBResult, error) {
 		return nil, errors.New("no files found in nzb")
 	}
 
-	// First pass: look for direct media files (.mkv, .mp4, .avi)
+	// First pass: look for direct media files (.mkv, .mp4, .avi), ignoring samples
 	var bestMedia NZBFile
 	var bestMediaSize int64
 	for _, file := range allFiles {
 		name := strings.ToLower(file.Subject)
 		isMedia := strings.Contains(name, ".mkv") || strings.Contains(name, ".mp4") || strings.Contains(name, ".avi")
-		if !isMedia {
+		isSample := strings.Contains(name, "sample")
+		if !isMedia || isSample {
 			continue
 		}
 		var size int64
@@ -164,8 +165,27 @@ func ParseNZBFull(r io.Reader) (*NZBResult, error) {
 		}
 	}
 
-	// If we found a direct media file, use it (no un-rarring needed)
-	if bestMediaSize > 0 {
+	// Second pass: collect all RAR volumes
+	type rarEntry struct {
+		file    NZBFile
+		partNum int
+	}
+	var rarFiles []rarEntry
+	var totalRarSize int64
+	
+	for _, file := range allFiles {
+		pn := extractPartNumber(file.Subject)
+		if pn >= 0 {
+			rarFiles = append(rarFiles, rarEntry{file: file, partNum: pn})
+			for _, seg := range file.Segments {
+				totalRarSize += int64(seg.Bytes)
+			}
+		}
+	}
+
+	// Compare the direct media file vs the RAR archives to see which is larger
+	// (Prevents edge cases where a small sample MKV bypasses the main RAR release)
+	if bestMediaSize > 0 && bestMediaSize > totalRarSize {
 		mf := buildMediaFile(bestMedia)
 		return &NZBResult{
 			MediaFile: mf,
@@ -173,21 +193,8 @@ func ParseNZBFull(r io.Reader) (*NZBResult, error) {
 		}, nil
 	}
 
-	// Second pass: collect all RAR volumes
-	type rarEntry struct {
-		file    NZBFile
-		partNum int
-	}
-	var rarFiles []rarEntry
-	for _, file := range allFiles {
-		pn := extractPartNumber(file.Subject)
-		if pn >= 0 {
-			rarFiles = append(rarFiles, rarEntry{file: file, partNum: pn})
-		}
-	}
-
 	if len(rarFiles) == 0 {
-		// Fallback: no media, no RARs — just pick the largest file
+		// Fallback: no media (or only sample), no RARs — just pick the largest file in the NZB
 		var largest NZBFile
 		var largestSize int64
 		for _, file := range allFiles {

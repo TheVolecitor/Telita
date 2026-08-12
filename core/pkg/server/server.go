@@ -1,6 +1,8 @@
 package server
 
 import (
+	"archive/zip"
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -53,12 +55,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/status", s.handleStatus)
 	// Addon manager routes
 	s.mux.HandleFunc("/api/addons/installed", s.handleInstalledAddons)
-	
+
 	// Proxy routes
 	s.mux.HandleFunc("/api/catalog", s.handleCatalog)
 	s.mux.HandleFunc("/api/meta", s.handleMeta)
 	s.mux.HandleFunc("/api/streams", s.handleStreams)
-	
+
 	// Torrent Play route
 	s.mux.HandleFunc("/api/play", s.handlePlay)
 	s.mux.HandleFunc("/api/play/nzb", s.handlePlayNZB)
@@ -68,7 +70,7 @@ func (s *Server) routes() {
 
 func (s *Server) Start() error {
 	log.Printf("Listening on http://localhost%s", s.addr)
-	
+
 	// Enable CORS for frontend clients
 	corsHandler := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +84,7 @@ func (s *Server) Start() error {
 			next.ServeHTTP(w, r)
 		})
 	}
-	
+
 	return http.ListenAndServe(s.addr, corsHandler(s.mux))
 }
 
@@ -96,10 +98,10 @@ func (s *Server) handleInstalledAddons(w http.ResponseWriter, r *http.Request) {
 	// Dummy response for now
 	json.NewEncoder(w).Encode([]map[string]interface{}{
 		{
-			"id": "com.linvo.cinemeta",
-			"name": "Cinemeta",
+			"id":          "com.linvo.cinemeta",
+			"name":        "Cinemeta",
 			"description": "Provides movie and series metadata",
-			"types": []string{"movie", "series"},
+			"types":       []string{"movie", "series"},
 		},
 	})
 }
@@ -222,49 +224,45 @@ func (s *Server) handlePlayNZB(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("failed to create request: %v", err), http.StatusInternalServerError)
 				return
 			}
-			
+
 			// Spoof SABnzbd User-Agent to bypass Cloudflare API protections on indexers
 			req.Header.Set("User-Agent", "SABnzbd/5.0.4")
 
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 10 {
-					return fmt.Errorf("stopped after 10 redirects")
-				}
-				// If indexer's redirect drops the query string (API key), restore it
-				if req.URL.RawQuery == "" && via[0].URL.RawQuery != "" {
-					req.URL.RawQuery = via[0].URL.RawQuery
-				}
-				// Ensure User-Agent is preserved across redirects
-				req.Header.Set("User-Agent", "SABnzbd/5.0.4")
-				return nil
-			},
-		}
-		
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("[NNTP] Error downloading NZB: %v", err)
-			http.Error(w, fmt.Sprintf("failed to fetch nzb: %v", err), http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-		
-		if resp.StatusCode != 200 {
-			log.Printf("[NNTP] Upstream NZB error: HTTP %d", resp.StatusCode)
-			http.Error(w, fmt.Sprintf("nzb upstream returned %d", resp.StatusCode), http.StatusBadGateway)
-			return
-		}
-		nzbBytes, err = io.ReadAll(resp.Body)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("failed to download nzb: %v", err), http.StatusBadGateway)
-			return
-		}
-		
-		nzbCacheMu.Lock()
-		nzbCache[nzbUrl] = nzbBytes
-		nzbCacheMu.Unlock()
-			
+			client := &http.Client{
+				Timeout: 30 * time.Second,
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					if len(via) >= 10 {
+						return fmt.Errorf("stopped after 10 redirects")
+					}
+					// If indexer's redirect drops the query string (API key), restore it
+					if req.URL.RawQuery == "" && via[0].URL.RawQuery != "" {
+						req.URL.RawQuery = via[0].URL.RawQuery
+					}
+					// Ensure User-Agent is preserved across redirects
+					req.Header.Set("User-Agent", "SABnzbd/5.0.4")
+					return nil
+				},
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				log.Printf("[NNTP] Error downloading NZB: %v", err)
+				http.Error(w, fmt.Sprintf("failed to fetch nzb: %v", err), http.StatusBadGateway)
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != 200 {
+				log.Printf("[NNTP] Upstream NZB error: HTTP %d", resp.StatusCode)
+				http.Error(w, fmt.Sprintf("nzb upstream returned %d", resp.StatusCode), http.StatusBadGateway)
+				return
+			}
+			nzbBytes, err = io.ReadAll(resp.Body)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to download nzb: %v", err), http.StatusBadGateway)
+				return
+			}
+
 		} else {
 			localPath := strings.TrimPrefix(nzbUrl, "file://")
 			nzbBytes, err = os.ReadFile(localPath)
@@ -273,6 +271,47 @@ func (s *Server) handlePlayNZB(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+
+		// Check if the downloaded/read file is a ZIP archive (magic bytes: PK\x03\x04)
+		if len(nzbBytes) > 4 && nzbBytes[0] == 0x50 && nzbBytes[1] == 0x4B && nzbBytes[2] == 0x03 && nzbBytes[3] == 0x04 {
+			log.Printf("[NNTP] File is a ZIP archive, attempting to extract NZB...")
+
+			// Try to read it as a zip file
+			zipReader, err := zip.NewReader(bytes.NewReader(nzbBytes), int64(len(nzbBytes)))
+			if err != nil {
+				log.Printf("[NNTP] Failed to parse ZIP archive: %v", err)
+				http.Error(w, "failed to parse zip archive", http.StatusBadGateway)
+				return
+			}
+
+			var foundNzb bool
+			for _, zf := range zipReader.File {
+				if strings.HasSuffix(strings.ToLower(zf.Name), ".nzb") {
+					rc, err := zf.Open()
+					if err != nil {
+						log.Printf("[NNTP] Failed to open NZB inside ZIP: %v", err)
+						continue
+					}
+					extractedBytes, err := io.ReadAll(rc)
+					rc.Close()
+					if err == nil {
+						log.Printf("[NNTP] Successfully extracted %s from ZIP", zf.Name)
+						nzbBytes = extractedBytes
+						foundNzb = true
+						break
+					}
+				}
+			}
+
+			if !foundNzb {
+				http.Error(w, "no .nzb file found inside the zip archive", http.StatusBadGateway)
+				return
+			}
+		}
+
+		nzbCacheMu.Lock()
+		nzbCache[nzbUrl] = nzbBytes
+		nzbCacheMu.Unlock()
 	}
 
 	// Get or create a persistent session (pool + parsed NZB + persistent Streamer)
@@ -288,26 +327,26 @@ func (s *Server) handlePlayNZB(w http.ResponseWriter, r *http.Request) {
 	if session.IsPacked && session.RARMap != nil {
 		// Return WebDAV URL for the virtual MKV
 		fileName := session.CleanFilename()
-		
-		webdavURL := fmt.Sprintf("http://127.0.0.1:8081/webdav/%s/%s", 
+
+		webdavURL := fmt.Sprintf("http://127.0.0.1:8081/webdav/%s/%s",
 			url.PathEscape(cacheKey),
 			url.PathEscape(fileName),
 		)
-		
+
 		log.Printf("[NNTP] Returning WebDAV stream URL: %s", webdavURL)
-		
+
 		http.Redirect(w, r, webdavURL, http.StatusFound)
 	} else if session.MediaFile != nil {
 		// Direct media file
 		fileName := session.CleanFilename()
-		
-		webdavURL := fmt.Sprintf("http://127.0.0.1:8081/webdav/%s/%s", 
+
+		webdavURL := fmt.Sprintf("http://127.0.0.1:8081/webdav/%s/%s",
 			url.PathEscape(cacheKey),
 			url.PathEscape(fileName),
 		)
-		
+
 		log.Printf("[NNTP] Returning WebDAV stream URL: %s", webdavURL)
-		
+
 		http.Redirect(w, r, webdavURL, http.StatusFound)
 	} else {
 		http.Error(w, "no playable media found in NZB", http.StatusNotFound)
@@ -321,28 +360,28 @@ func (s *Server) handleWebdav(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing cache key", http.StatusBadRequest)
 		return
 	}
-	
+
 	cacheKey, err := url.PathUnescape(pathParts[0])
 	if err != nil {
 		http.Error(w, "invalid cache key", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Try to get session from cache (it should have been created by /api/play/nzb)
 	session, err := nntpstream.GlobalCache.Get(cacheKey)
 	if err != nil || session == nil {
 		http.Error(w, "session not found or expired (call /api/play/nzb first)", http.StatusNotFound)
 		return
 	}
-	
+
 	session.UpdateLastUsed()
-	
+
 	// Create WebDAV filesystem for this session
 	fs := &webdavfs.NZBFileSystem{Session: session}
-	
+
 	// Create WebDAV handler, stripping the /webdav/{cacheKey} prefix
 	prefix := "/webdav/" + pathParts[0]
-	
+
 	handler := &webdav.Handler{
 		Prefix:     prefix,
 		FileSystem: fs,
@@ -355,11 +394,9 @@ func (s *Server) handleWebdav(w http.ResponseWriter, r *http.Request) {
 			}
 		},
 	}
-	
+
 	handler.ServeHTTP(w, r)
 }
-
-
 
 func (s *Server) handleStop(w http.ResponseWriter, r *http.Request) {
 	err := player.DropAllTorrents()
