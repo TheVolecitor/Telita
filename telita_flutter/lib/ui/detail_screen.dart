@@ -1101,7 +1101,7 @@ class _StreamCardState extends State<StreamCard> {
                             fontSize: 12,
                             height: 1.4,
                           ),
-                          maxLines: 4,
+                          maxLines: 5,
                           overflow: TextOverflow.ellipsis,
                         ),
                       ],
