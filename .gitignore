@@ -30,3 +30,4 @@ telita_flutter/*.sh
 *.user
 *.userosscache
 *.sln.docstates
+telita_api/

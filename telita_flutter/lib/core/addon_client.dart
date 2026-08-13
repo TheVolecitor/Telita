@@ -219,6 +219,23 @@ class MetaPreview {
           : null,
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'type': type,
+      'name': name,
+      if (poster != null) 'poster': poster,
+      if (background != null) 'background': background,
+      if (description != null) 'description': description,
+      if (releaseInfo != null) 'releaseInfo': releaseInfo,
+      if (imdbRating != null) 'imdbRating': imdbRating,
+      if (genres != null) 'genres': genres,
+      if (logo != null) 'logo': logo,
+      if (runtime != null) 'runtime': runtime,
+      if (cast != null) 'cast': cast,
+    };
+  }
 }
 
 class SearchResultGroup {

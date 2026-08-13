@@ -15,6 +15,7 @@ import 'spinning_logo.dart';
 class DetailScreen extends StatefulWidget {
   final MetaPreview item;
   final String type; // "movie" | "series"
+  final String? initialVideoId;
   final VoidCallback onBack;
   final Function(String url, String type, String id, {Map<String, String>? headers, List<MediaSegment>? segments}) onPlay;
 
@@ -22,6 +23,7 @@ class DetailScreen extends StatefulWidget {
     super.key,
     required this.item,
     required this.type,
+    this.initialVideoId,
     required this.onBack,
     required this.onPlay,
   });
@@ -75,12 +77,31 @@ class _DetailScreenState extends State<DetailScreen> {
     } else {
       final videos = (_meta ?? widget.item).videos;
       if (videos != null && videos.isNotEmpty) {
-        final first = videos[0];
+        MetaVideo? targetVid;
+        if (widget.initialVideoId != null) {
+          try {
+            targetVid = videos.firstWhere((v) => v.id == widget.initialVideoId);
+          } catch (_) {
+            final parts = widget.initialVideoId!.split(':');
+            if (parts.length >= 3) {
+              final targetSeason = int.tryParse(parts[1]);
+              final targetEp = int.tryParse(parts[2]);
+              try {
+                targetVid = videos.firstWhere((v) => v.season == targetSeason && v.episode == targetEp);
+              } catch (_) {}
+            }
+          }
+        }
+        targetVid ??= videos[0];
+
         setState(() {
-          if (first.season != null) _selectedSeason = first.season!;
-          _selectedVideoId = first.id;
+          if (targetVid!.season != null) _selectedSeason = targetVid.season!;
+          _selectedVideoId = targetVid.id;
+          if (widget.initialVideoId != null) {
+            _viewingStreams = true;
+          }
         });
-        _fetchStreams(first.id);
+        _fetchStreams(targetVid.id);
       }
     }
   }
@@ -152,29 +173,46 @@ class _DetailScreenState extends State<DetailScreen> {
     final season = parts.length > 1 ? parts[1] : null;
     final episode = parts.length > 2 ? parts[2] : null;
 
-    final provider = cfg.introSkipProvider; // 'introdb.app' or 'theintrodb.org'
-    print('[INTROSKIP] Fetching skip segments for ID: $videoId (imdb: $imdbId, season: $season, ep: $episode) using $provider');
+    final primaryProvider = cfg.introSkipProvider;
+    final secondaryProvider = primaryProvider == 'introdb.app' ? 'theintrodb.org' : 'introdb.app';
 
+    print('[INTROSKIP] Fetching skip segments for ID: $videoId (imdb: $imdbId, season: $season, ep: $episode) using $primaryProvider');
+
+    var segments = await _tryFetchSkipSegments(primaryProvider, imdbId, season, episode);
+
+    if (segments == null) {
+      print('[INTROSKIP] $primaryProvider failed or returned error. Falling back to $secondaryProvider');
+      segments = await _tryFetchSkipSegments(secondaryProvider, imdbId, season, episode);
+    }
+
+    if (segments != null) {
+      print('[INTROSKIP] segments retrieved (${segments.length} found):');
+      for (var seg in segments) {
+        print('  -> [${seg.type}] start: ${seg.startSec}s, end: ${seg.endSec}s');
+      }
+      return segments;
+    }
+
+    print('[INTROSKIP] segments retrieved (0 segments found)');
+    return null;
+  }
+
+  Future<List<MediaSegment>?> _tryFetchSkipSegments(String provider, String imdbId, String? season, String? episode) async {
     try {
       if (provider == 'introdb.app') {
         String url = 'https://api.introdb.app/segments?imdb_id=$imdbId';
         if (season != null && episode != null) {
           url += '&season=$season&episode=$episode';
         }
-        print('[INTROSKIP] Request URL: $url');
+        print('[INTROSKIP] Request URL ($provider): $url');
         final res = await http.get(Uri.parse(url));
-        print('[INTROSKIP] Response HTTP status: ${res.statusCode}');
+        print('[INTROSKIP] Response HTTP status ($provider): ${res.statusCode}');
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           if (data is List) {
-            final list = data.map((json) {
+            return data.map((json) {
               return MediaSegment.fromJson(json as Map<String, dynamic>, json['segment_type'] ?? 'unknown');
             }).toList();
-            print('[INTROSKIP] segments retrieved (${list.length} found):');
-            for (var seg in list) {
-              print('  -> [${seg.type}] start: ${seg.startSec}s, end: ${seg.endSec}s');
-            }
-            return list;
           }
         }
       } else if (provider == 'theintrodb.org') {
@@ -182,9 +220,9 @@ class _DetailScreenState extends State<DetailScreen> {
         if (season != null && episode != null) {
           url += '&season=$season&episode=$episode';
         }
-        print('[INTROSKIP] Request URL: $url');
+        print('[INTROSKIP] Request URL ($provider): $url');
         final res = await http.get(Uri.parse(url));
-        print('[INTROSKIP] Response HTTP status: ${res.statusCode}');
+        print('[INTROSKIP] Response HTTP status ($provider): ${res.statusCode}');
         if (res.statusCode == 200) {
           final data = jsonDecode(res.body);
           final segments = <MediaSegment>[];
@@ -200,17 +238,12 @@ class _DetailScreenState extends State<DetailScreen> {
           if (data['preview'] != null) {
             for (var p in data['preview']) segments.add(MediaSegment.fromJson(p, 'preview'));
           }
-          print('[INTROSKIP] segments retrieved (${segments.length} found):');
-          for (var seg in segments) {
-            print('  -> [${seg.type}] start: ${seg.startSec}s, end: ${seg.endSec}s');
-          }
           return segments;
         }
       }
     } catch (e) {
-      print('[INTROSKIP] Error fetching intro skip segments: $e');
+      print('[INTROSKIP] Error fetching from $provider: $e');
     }
-    print('[INTROSKIP] segments retrieved (0 segments found)');
     return null;
   }
 
@@ -220,9 +253,11 @@ class _DetailScreenState extends State<DetailScreen> {
         : _selectedVideoId;
     final headers = stream.behaviorHints?.proxyHeaders?.request;
 
-    // Show a loading indicator if resolving or fetching segments takes time
+    final streamKey = stream.infoHash ?? stream.url ?? stream.externalUrl ?? stream.nzbUrl ?? stream.title ?? stream.hashCode.toString();
+
+    // Show a loading indicator in the play button while resolving or launching player
     setState(() {
-      _resolvingHash = stream.infoHash; // We just re-use this to show the spinner
+      _resolvingHash = streamKey;
     });
 
     List<MediaSegment>? segments;
@@ -233,25 +268,31 @@ class _DetailScreenState extends State<DetailScreen> {
     }
 
     if (stream.url != null) {
-      setState(() => _resolvingHash = null);
       widget.onPlay(stream.url!, widget.type, subtitleQueryId, headers: headers, segments: segments);
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _resolvingHash = null);
+      });
     } else if (stream.externalUrl != null) {
-      setState(() => _resolvingHash = null);
+      if (mounted) setState(() => _resolvingHash = null);
       final uri = Uri.parse(stream.externalUrl!);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } else if (stream.nzbUrl != null && stream.servers != null && stream.servers!.isNotEmpty) {
-      setState(() => _resolvingHash = null);
       final encodedUrl = Uri.encodeComponent(stream.nzbUrl!);
       final encodedServer = Uri.encodeComponent(stream.servers!.first);
       final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
       widget.onPlay(playUrl, widget.type, subtitleQueryId, segments: segments);
+      Future.delayed(const Duration(seconds: 4), () {
+        if (mounted) setState(() => _resolvingHash = null);
+      });
     } else if (stream.infoHash != null) {
       final url = await _resolveStreamUrl(stream.infoHash!);
-      setState(() {
-        _resolvingHash = null;
-      });
+      if (mounted) {
+        setState(() {
+          _resolvingHash = null;
+        });
+      }
       if (url != null) {
         widget.onPlay(url, widget.type, subtitleQueryId, segments: segments);
       } else {
@@ -263,6 +304,8 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
         );
       }
+    } else {
+      if (mounted) setState(() => _resolvingHash = null);
     }
   }
 
@@ -798,7 +841,8 @@ class _DetailScreenState extends State<DetailScreen> {
         itemCount: list.length,
         itemBuilder: (context, idx) {
           final s = list[idx];
-          final resolving = _resolvingHash != null && (_resolvingHash == s.infoHash || _resolvingHash == s.url || _resolvingHash == s.nzbUrl);
+          final sKey = s.infoHash ?? s.url ?? s.externalUrl ?? s.nzbUrl ?? s.title ?? s.hashCode.toString();
+          final resolving = _resolvingHash != null && _resolvingHash == sKey;
 
           return StreamCard(
             stream: s,

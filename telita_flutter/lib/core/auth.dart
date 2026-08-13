@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
 import 'watch_history.dart';
+import 'settings.dart';
 
 const String defaultApiUrl = 'https://telita.thevolecitor.qzz.io';
 
@@ -212,6 +213,7 @@ class AuthService extends ValueNotifier<AuthState> {
             await prefs.remove('telita_profile_id');
           }
           await WatchHistory.instance.setProfile(profile?.id, token);
+          await SettingsService.instance.setProfile(profile?.id, token);
           return;
         }
       } catch (e) {
@@ -223,6 +225,7 @@ class AuthService extends ValueNotifier<AuthState> {
 
     value = AuthState(ready: true);
     await WatchHistory.instance.setProfile(null, null);
+    await SettingsService.instance.setProfile(null, null);
   }
 
   Future<Map<String, dynamic>> register(String email, String password, {String? name}) async {
@@ -305,6 +308,7 @@ class AuthService extends ValueNotifier<AuthState> {
     await prefs.remove('telita_guest');
     value = AuthState(ready: true);
     await WatchHistory.instance.setProfile(null, null);
+    await SettingsService.instance.setProfile(null, null);
   }
 
   Future<void> continueAsGuest() async {
@@ -312,6 +316,7 @@ class AuthService extends ValueNotifier<AuthState> {
     await prefs.setBool('telita_guest', true);
     value = AuthState(isGuest: true, ready: true);
     await WatchHistory.instance.setProfile(null, null);
+    await SettingsService.instance.setProfile(null, null);
   }
 
   Future<bool> unlockProfile(String profileId, String pin) async {
@@ -333,6 +338,7 @@ class AuthService extends ValueNotifier<AuthState> {
     await prefs.setString('telita_profile_id', profile.id);
     value = value.copyWith(profile: profile);
     await WatchHistory.instance.setProfile(profile.id, value.token);
+    await SettingsService.instance.setProfile(profile.id, value.token);
   }
 
   void updateProfiles(List<AuthProfile> profiles) {
@@ -463,6 +469,7 @@ class AuthService extends ValueNotifier<AuthState> {
       ready: true,
     );
     await WatchHistory.instance.setProfile(profile?.id, token);
+    await SettingsService.instance.setProfile(profile?.id, token);
   }
 
   Map<String, String> headers() {

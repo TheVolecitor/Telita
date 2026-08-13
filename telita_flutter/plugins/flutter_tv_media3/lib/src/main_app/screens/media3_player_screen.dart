@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
 import '../../../flutter_tv_media3.dart';
 import 'dart:io';
@@ -476,10 +477,107 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               ),
             ),
 
-            // Buffering indicator
+            // Error or Buffering indicator
             ValueListenableBuilder<VideoPlayerValue>(
               valueListenable: widget.controller,
               builder: (context, value, child) {
+                if (value.hasError) {
+                  final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
+                      ? widget.playlist[widget.initialIndex]
+                      : null;
+                  return Container(
+                    color: Colors.black87,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.white54, size: 64),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'Playback Error',
+                            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 48.0),
+                            child: Text(
+                              value.errorDescription ?? 'Unknown error occurred.',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white54, fontSize: 15),
+                            ),
+                          ),
+                          const SizedBox(height: 48),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.arrow_back),
+                                label: const Text('Exit'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.white.withOpacity(0.1),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                ),
+                                onPressed: widget.onBack,
+                              ),
+                              const SizedBox(width: 16),
+                              ElevatedButton.icon(
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.fullFocusColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                ),
+                                onPressed: () {
+                                  // Can't easily restart a failed fvp instance from overlay
+                                  // Exit and let the user click the item again.
+                                  widget.onBack();
+                                },
+                              ),
+                              if (item?.url != null && item!.url.isNotEmpty) ...[
+                                const SizedBox(width: 16),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.play_arrow),
+                                  label: const Text('Open in VLC'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withOpacity(0.1),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  ),
+                                  onPressed: () {
+                                    if (Platform.isWindows) {
+                                      Process.start('cmd', ['/c', 'start', '', 'vlc', item.url]);
+                                    } else {
+                                      Process.start('vlc', [item.url]);
+                                    }
+                                  },
+                                ),
+                                const SizedBox(width: 16),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.play_circle),
+                                  label: const Text('Open in MPV'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.white.withOpacity(0.1),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  ),
+                                  onPressed: () {
+                                    if (Platform.isWindows) {
+                                      Process.start('cmd', ['/c', 'start', '', 'mpv', item.url]);
+                                    } else {
+                                      Process.start('mpv', [item.url]);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 return value.isBuffering
                     ? const Center(
                         child: BrandLoadingIndicator(

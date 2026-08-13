@@ -12,6 +12,7 @@ import 'core/auth.dart';
 import 'core/addon_client.dart';
 import 'core/watch_history.dart';
 import 'core/settings.dart';
+import 'core/simkl_client.dart';
 import 'ui/splash_screen.dart';
 import 'dart:io';
 import 'dart:convert';
@@ -86,23 +87,32 @@ class TelitaApp extends StatelessWidget {
       valueListenable: SettingsService.instance,
       builder: (context, settings, child) {
         final isOled = settings.appTheme == 'black';
+        final isCustom = settings.appTheme == 'custom';
+
+        Color parseColor(String hexStr, Color fallback) {
+          hexStr = hexStr.toUpperCase().replaceAll('#', '');
+          if (hexStr.length == 6) hexStr = 'FF$hexStr';
+          return Color(int.tryParse(hexStr, radix: 16) ?? fallback.value);
+        }
+
+        final primaryColor = isCustom
+            ? parseColor(settings.customSecondaryColor, const Color(0xFF38BDF8))
+            : (isOled ? const Color(0xFFE2E8F0) : const Color(0xFF38BDF8));
+            
+        final backgroundColor = isCustom
+            ? parseColor(settings.customPrimaryColor, const Color(0xFF0F172A))
+            : (isOled ? Colors.black : const Color(0xFF0F172A));
 
         return MaterialApp(
           title: 'Telita',
           debugShowCheckedModeBanner: false,
           theme: ThemeData(
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: isOled
-                ? Colors.black
-                : const Color(0xFF0F172A),
+            scaffoldBackgroundColor: backgroundColor,
             colorScheme: ColorScheme.dark(
-              primary: isOled
-                  ? const Color(0xFFE2E8F0)
-                  : const Color(0xFF38BDF8),
-              secondary: isOled
-                  ? const Color(0xFFE2E8F0)
-                  : const Color(0xFF38BDF8),
-              surface: isOled ? Colors.black : const Color(0xFF1E293B),
+              primary: primaryColor,
+              secondary: primaryColor,
+              surface: backgroundColor,
             ),
             fontFamily: 'Inter',
             useMaterial3: true,
@@ -129,6 +139,7 @@ class _AppContainerState extends State<AppContainer> {
 
   MetaPreview? _selectedDetailItem;
   String? _selectedDetailType;
+  String? _selectedInitialVideoId;
 
   @override
   void initState() {
@@ -214,6 +225,17 @@ class _AppContainerState extends State<AppContainer> {
     final mediaItemPoster =
         poster ?? item?.poster ?? _selectedDetailItem?.poster;
 
+    final effectiveHeaders = <String, String>{
+      'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Sec-Fetch-Dest': 'video',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'cross-site',
+      if (headers != null) ...headers,
+    };
+
     final originalUrl = url;
     print(' [PLAY] Requested stream: $originalUrl');
 
@@ -226,12 +248,11 @@ class _AppContainerState extends State<AppContainer> {
           .timeout(const Duration(seconds: 5));
       request.followRedirects = false;
       
-      // Pass user-agent if provided, to bypass basic blocks during redirect check
-      if (headers != null && headers.containsKey('User-Agent')) {
-        request.headers.set('User-Agent', headers['User-Agent']!);
-      } else if (headers != null && headers.containsKey('user-agent')) {
-        request.headers.set('User-Agent', headers['user-agent']!);
-      }
+      effectiveHeaders.forEach((k, v) {
+        try {
+          request.headers.set(k, v);
+        } catch (_) {}
+      });
 
       final response = await request.close();
       print(' [PLAY] HEAD $url → HTTP ${response.statusCode}');
@@ -264,7 +285,7 @@ class _AppContainerState extends State<AppContainer> {
         coverImg: mediaItemPoster,
         mediaItemType: MediaItemType.video,
         startPosition: initialPosition,
-        headers: headers,
+        headers: effectiveHeaders,
         segments: segments,
         saveWatchTime:
             ({
@@ -286,6 +307,14 @@ class _AppContainerState extends State<AppContainer> {
                     updatedAt: DateTime.now().millisecondsSinceEpoch,
                   ),
                 );
+
+                if (position / duration >= 0.8 || position > 300) {
+                  SimklClient.scrobbleWatched(
+                    type: type,
+                    title: mediaItemName,
+                    contentId: id,
+                  );
+                }
               }
             },
       ),
@@ -495,10 +524,11 @@ class _AppContainerState extends State<AppContainer> {
                       }
                     });
                   },
-                  onSelect: (item, type) {
+                  onSelect: (item, type, {initialVideoId}) {
                     setState(() {
                       _selectedDetailItem = item;
                       _selectedDetailType = type;
+                      _selectedInitialVideoId = initialVideoId;
                     });
                   },
                   onResume: (entry) {
@@ -532,7 +562,11 @@ class _AppContainerState extends State<AppContainer> {
               child: DetailScreen(
                 item: _selectedDetailItem!,
                 type: _selectedDetailType!,
-                onBack: () => setState(() => _selectedDetailItem = null),
+                initialVideoId: _selectedInitialVideoId,
+                onBack: () => setState(() {
+                  _selectedDetailItem = null;
+                  _selectedInitialVideoId = null;
+                }),
                 onPlay: (url, type, id, {headers, segments}) => _playStream(
                   context,
                   url,

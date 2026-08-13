@@ -483,7 +483,7 @@ class _ProfileAvatarButtonState extends State<_ProfileAvatarButton> {
                       ? DecorationImage(
                           image: widget.profile.avatarUrl!.startsWith('http')
                               ? NetworkImage(widget.profile.avatarUrl!) as ImageProvider
-                              : AssetImage(widget.profile.avatarUrl!),
+                              : AssetImage('assets/pfps/${widget.profile.avatarUrl!.split('/').last}'),
                           fit: BoxFit.cover,
                         )
                       : null,

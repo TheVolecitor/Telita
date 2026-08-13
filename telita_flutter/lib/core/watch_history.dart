@@ -27,6 +27,13 @@ class WatchEntry {
     required this.updatedAt,
   });
 
+  String get seriesId {
+    if (type == 'series' && id.contains(':')) {
+      return id.split(':')[0];
+    }
+    return id;
+  }
+
   factory WatchEntry.fromJson(Map<String, dynamic> json) {
     return WatchEntry(
       id: json['id'] ?? json['content_id'] ?? '',
@@ -73,6 +80,20 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
   String? _profileId;
   String? _token;
 
+  List<WatchEntry> _deduplicateEntries(List<WatchEntry> rawList) {
+    rawList.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final seen = <String>{};
+    final result = <WatchEntry>[];
+    for (final e in rawList) {
+      final key = e.seriesId;
+      if (!seen.contains(key)) {
+        seen.add(key);
+        result.add(e);
+      }
+    }
+    return result;
+  }
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_storageKey);
@@ -80,8 +101,7 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
       try {
         final List<dynamic> decoded = await compute(_decodeJsonList, raw);
         final list = decoded.map((e) => WatchEntry.fromJson(e)).toList();
-        list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        value = list;
+        value = _deduplicateEntries(list);
       } catch (e) {
         print("Error reading local watch history: $e");
       }
@@ -108,11 +128,11 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
       if (res.statusCode == 200) {
         final List<dynamic> decoded = await compute(_decodeJsonList, res.body);
         final list = decoded.map((e) => WatchEntry.fromJson(e)).toList();
-        list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-        value = list;
+        final deduped = _deduplicateEntries(list);
+        value = deduped;
         // Optionally save to local for offline caching
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_storageKey, jsonEncode(list.map((e) => e.toJson()).toList()));
+        await prefs.setString(_storageKey, jsonEncode(deduped.map((e) => e.toJson()).toList()));
       }
     } catch (e) {
       print("Error fetching server watch history: $e");
@@ -121,11 +141,12 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
   }
 
   Future<void> _persist(List<WatchEntry> list, {WatchEntry? newEntry, String? deletedId}) async {
+    final deduped = _deduplicateEntries(list);
     // 1. Save local
     final prefs = await SharedPreferences.getInstance();
-    final encoded = jsonEncode(list.map((e) => e.toJson()).toList());
+    final encoded = jsonEncode(deduped.map((e) => e.toJson()).toList());
     await prefs.setString(_storageKey, encoded);
-    value = list;
+    value = deduped;
 
     // 2. Sync to server if profile is logged in
     if (_profileId != null && _token != null) {
@@ -155,7 +176,8 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
 
   Future<void> save(WatchEntry entry) async {
     final list = List<WatchEntry>.from(value);
-    final idx = list.indexWhere((e) => e.id == entry.id);
+    final targetKey = entry.seriesId;
+    final idx = list.indexWhere((e) => e.seriesId == targetKey);
     
     WatchEntry entryToSave = entry;
 
@@ -172,25 +194,27 @@ class WatchHistory extends ValueNotifier<List<WatchEntry>> {
           updatedAt: list[idx].updatedAt + 1000,
         );
       }
-      list[idx] = entryToSave;
-    } else {
-      list.insert(0, entryToSave);
+      list.removeAt(idx);
     }
     
-    list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    if (list.length > _maxEntries) {
-      list.removeRange(_maxEntries, list.length);
+    list.insert(0, entryToSave);
+    
+    final deduped = _deduplicateEntries(list);
+    if (deduped.length > _maxEntries) {
+      deduped.removeRange(_maxEntries, deduped.length);
     }
-    await _persist(list, newEntry: entryToSave);
+    await _persist(deduped, newEntry: entryToSave);
   }
 
   WatchEntry? get(String id) {
-    final idx = value.indexWhere((e) => e.id == id);
+    final targetKey = id.contains(':') ? id.split(':')[0] : id;
+    final idx = value.indexWhere((e) => e.id == id || e.seriesId == targetKey);
     return idx >= 0 ? value[idx] : null;
   }
 
   Future<void> remove(String id) async {
-    final list = value.where((e) => e.id != id).toList();
+    final targetKey = id.contains(':') ? id.split(':')[0] : id;
+    final list = value.where((e) => e.id != id && e.seriesId != targetKey).toList();
     await _persist(list, deletedId: id);
   }
 

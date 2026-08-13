@@ -172,7 +172,9 @@ class _AddonScreenState extends State<AddonScreen> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    backgroundColor: Colors.white.withOpacity(0.1),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
                   ),
                   onPressed: _installing
                       ? null

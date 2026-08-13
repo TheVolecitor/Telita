@@ -6,10 +6,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../core/addon_client.dart';
 import '../core/watch_history.dart';
 import '../core/auth.dart';
+import '../core/simkl_client.dart';
+import '../core/settings.dart';
+import '../core/catalog_config.dart';
 import 'spinning_logo.dart';
 
 class DiscoverScreen extends StatefulWidget {
-  final Function(MetaPreview item, String type) onSelect;
+  final Function(MetaPreview item, String type, {String? initialVideoId}) onSelect;
   final Function(WatchEntry entry) onResume;
   final VoidCallback? onManageProfile;
 
@@ -78,6 +81,42 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }).toList();
 
     List<CatalogGroup> loadedGroups = [];
+
+    // Load Simkl Watchlists if connected
+    try {
+      final simklWatchlists = await SimklClient.fetchWatchlistCatalogs();
+      if (simklWatchlists.isNotEmpty) {
+        if (simklWatchlists['watching'] != null && simklWatchlists['watching']!.isNotEmpty) {
+          loadedGroups.add(CatalogGroup(
+            id: 'simkl-watching',
+            title: 'Simkl Watchlist - Watching',
+            items: simklWatchlists['watching']!,
+          ));
+        }
+        if (simklWatchlists['plantowatch'] != null && simklWatchlists['plantowatch']!.isNotEmpty) {
+          loadedGroups.add(CatalogGroup(
+            id: 'simkl-plantowatch',
+            title: 'Simkl Watchlist - Plan to Watch',
+            items: simklWatchlists['plantowatch']!,
+          ));
+        }
+        if (simklWatchlists['completed'] != null && simklWatchlists['completed']!.isNotEmpty) {
+          loadedGroups.add(CatalogGroup(
+            id: 'simkl-completed',
+            title: 'Simkl Watchlist - Completed',
+            items: simklWatchlists['completed']!,
+          ));
+        }
+        if (loadedGroups.isNotEmpty && mounted) {
+          setState(() {
+            _catalogs = List.from(loadedGroups);
+            _loadingCatalogs = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading Simkl watchlists: $e');
+    }
 
     // Fetch sequentially to prevent network socket exhaustion and SSL Handshake failures on weak TV network stacks
     for (int i = 0; i < rootCatalogs.length; i++) {
@@ -158,6 +197,33 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   HeroInfo? _heroInfo;
 
+  void _updateHero(String title, String? background, String? description, String type, String categoryTitle, String itemId) {
+    setState(() {
+      _heroInfo = HeroInfo(title, background, description, type, categoryTitle);
+    });
+
+    if (background == null) {
+      final targetId = itemId;
+      Future.delayed(const Duration(milliseconds: 400), () async {
+        if (!mounted) return;
+        if (_heroInfo?.title == title) {
+          final fullMeta = await AddonRegistry.instance.getMeta(type, targetId);
+          if (fullMeta != null && fullMeta.background != null && mounted && _heroInfo?.title == title) {
+            setState(() {
+              _heroInfo = HeroInfo(
+                title,
+                fullMeta.background,
+                fullMeta.description ?? description,
+                type,
+                categoryTitle,
+              );
+            });
+          }
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -184,8 +250,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 Positioned(
                   top: 0,
                   right: 0,
-                  width: MediaQuery.of(context).size.width * 0.85,
-                  height: MediaQuery.of(context).size.height * 0.8,
+                  width: MediaQuery.of(context).size.width * 0.66,
+                  height: MediaQuery.of(context).size.height * 0.66,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
                     child: Container(
@@ -595,9 +661,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                           ).createShader(bounds);
                         },
                         blendMode: BlendMode.dstIn,
-                        child: _query.trim().isNotEmpty
-                            ? _buildSearchResults()
-                            : _buildCatalogsSection(),
+                        child: ValueListenableBuilder<AppSettings>(
+                          valueListenable: SettingsService.instance,
+                          builder: (context, settings, _) {
+                            return _query.trim().isNotEmpty
+                                ? _buildSearchResults(settings.discoverScale)
+                                : _buildCatalogsSection(settings.discoverScale);
+                          },
+                        ),
                       ),
                     ),
                   ],
@@ -610,7 +681,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _buildSearchResults() {
+  Widget _buildSearchResults(double scale) {
     if (_searchLoading) {
       return const Center(child: BrandLoadingIndicator(color: Colors.white70));
     }
@@ -649,7 +720,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             ),
             const SizedBox(height: 16),
             SizedBox(
-              height: 255, // increased to accommodate 1.05 scale
+              height: 255 * scale, // scaled height
               child: ListView.builder(
                 clipBehavior: Clip.none,
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -659,19 +730,19 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   final item = group.results[itemIdx];
                   return PosterCard(
                     item: item,
+                    scale: scale,
                     onSelect: widget.onSelect,
                     type: _guessType(item),
                     onFocus: (focused) {
                       if (focused) {
-                        setState(() {
-                          _heroInfo = HeroInfo(
-                            item.name,
-                            item.background ?? item.poster,
-                            item.description,
-                            _guessType(item),
-                            group.catalogName,
-                          );
-                        });
+                        _updateHero(
+                          item.name,
+                          item.background,
+                          item.description,
+                          _guessType(item),
+                          group.catalogName,
+                          item.id,
+                        );
                       }
                     },
                   );
@@ -685,120 +756,145 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _buildCatalogsSection() {
+  Widget _buildCatalogsSection(double scale) {
     return ValueListenableBuilder<List<WatchEntry>>(
       valueListenable: WatchHistory.instance,
       builder: (context, watchEntries, _) {
-        final hasWatchHistory =
-            watchEntries.isNotEmpty && _expandedCatalogId == null;
+        final config = CatalogConfig.fromString(SettingsService.instance.value.catalogConfigJson);
+        final hasWatchHistory = watchEntries.isNotEmpty && _expandedCatalogId == null;
 
-        int itemCount = 0;
-        if (hasWatchHistory) itemCount++;
+        List<dynamic> availableItems = [];
+        if (watchEntries.isNotEmpty) {
+          availableItems.add('continue_watching');
+        }
+        availableItems.addAll(_catalogs);
+
+        List<dynamic> renderItems = [];
+        for (String id in config.order) {
+          if (config.hidden.contains(id)) continue;
+          if (id == 'continue_watching' && watchEntries.isNotEmpty) {
+            renderItems.add('continue_watching');
+          } else {
+            final match = availableItems.whereType<CatalogGroup>().cast<CatalogGroup?>().firstWhere((c) => c!.id == id, orElse: () => null);
+            if (match != null) renderItems.add(match);
+          }
+        }
+        
+        for (var item in availableItems) {
+          String id = item is String ? item : (item as CatalogGroup).id;
+          if (config.hidden.contains(id)) continue;
+          if (!config.order.contains(id)) {
+            renderItems.add(item);
+          }
+        }
+
+        int itemCount = renderItems.length;
         if (_loadingCatalogs) {
           itemCount++;
-        } else {
-          itemCount += _catalogs.length;
         }
 
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 40, left: 24, right: 24),
           itemCount: itemCount,
           itemBuilder: (context, index) {
-            int currentIdx = index;
+            if (_loadingCatalogs && index == renderItems.length) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32.0),
+                  child: BrandLoadingIndicator(color: Colors.white70),
+                ),
+              );
+            }
 
-            if (hasWatchHistory) {
-              if (currentIdx == 0) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.secondary,
-                                shape: BoxShape.circle,
-                              ),
+            final item = renderItems[index];
+
+            if (item is String && item == 'continue_watching') {
+              if (_expandedCatalogId != null) return const SizedBox();
+              
+              int limit = config.limits['continue_watching'] ?? watchEntries.length;
+              final displayEntries = watchEntries.take(limit).toList();
+              
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.secondary,
+                              shape: BoxShape.circle,
                             ),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'Continue Watching',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        TextButton(
-                          onPressed: () => WatchHistory.instance.clear(),
-                          child: const Text(
-                            'Clear All',
-                            style: TextStyle(color: Colors.white30),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 255,
-                      child: ListView.builder(
-                        clipBehavior: Clip.none,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: watchEntries.length,
-                        itemBuilder: (context, idx) {
-                          final entry = watchEntries[idx];
-                          return ContinueWatchingCard(
-                            entry: entry,
-                            onResume: widget.onResume,
-                            onSelect: widget.onSelect,
-                            autofocus: idx == 0,
-                            onFocus: (focused) {
-                              if (focused) {
-                                setState(() {
-                                  _heroInfo = HeroInfo(
-                                    entry.name ?? 'Unknown',
-                                    entry.poster,
-                                    null,
-                                    entry.type,
-                                    'Continue Watching',
-                                  );
-                                });
-                              }
-                            },
-                          );
-                        },
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Continue Watching',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
-                );
-              }
-              currentIdx--;
-            }
-
-            if (_loadingCatalogs) {
-              if (currentIdx == 0) {
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32.0),
-                    child: const BrandLoadingIndicator(color: Colors.white70),
+                      TextButton(
+                        onPressed: () => WatchHistory.instance.clear(),
+                        child: const Text(
+                          'Clear All',
+                          style: TextStyle(color: Colors.white30),
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 255 * scale,
+                    child: ListView.builder(
+                      clipBehavior: Clip.none,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: displayEntries.length,
+                      itemBuilder: (context, idx) {
+                        final entry = displayEntries[idx];
+                        return ContinueWatchingCard(
+                          entry: entry,
+                          scale: scale,
+                          onResume: widget.onResume,
+                          onSelect: widget.onSelect,
+                          autofocus: idx == 0 && index == 0,
+                          onFocus: (focused) {
+                            if (focused) {
+                              _updateHero(
+                                entry.name ?? 'Unknown',
+                                null,
+                                null,
+                                entry.type,
+                                'Continue Watching',
+                                entry.id,
+                              );
+                            }
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                ],
+              );
+            }
+
+            final group = item as CatalogGroup;
+            final isExpanded = _expandedCatalogId == group.id;
+            if (_expandedCatalogId != null && !isExpanded) {
               return const SizedBox();
             }
 
-            final group = _catalogs[currentIdx];
-            final isExpanded = _expandedCatalogId == group.id;
-            if (_expandedCatalogId != null && !isExpanded)
-              return const SizedBox();
+            int limit = config.limits[group.id] ?? group.items.length;
+            final displayItems = isExpanded ? group.items : group.items.take(limit).toList();
 
             return Builder(
               builder: (categoryContext) {
@@ -860,23 +956,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
                             gridDelegate:
-                                const SliverGridDelegateWithMaxCrossAxisExtent(
-                                  maxCrossAxisExtent: 160,
-                                  mainAxisExtent: 240,
+                                SliverGridDelegateWithMaxCrossAxisExtent(
+                                  maxCrossAxisExtent: 160 * scale,
+                                  mainAxisExtent: 240 * scale,
                                   crossAxisSpacing: 12,
                                   mainAxisSpacing: 12,
                                 ),
-                            itemCount: group.items.length,
+                            itemCount: displayItems.length,
                             itemBuilder: (context, idx) {
                               return PosterCard(
-                                item: group.items[idx],
+                                item: displayItems[idx],
+                                scale: scale,
                                 showTitle: true,
                                 onSelect: widget.onSelect,
-                                type: _guessType(group.items[idx]),
+                                type: _guessType(displayItems[idx]),
                                 autofocus:
-                                    idx == 0 &&
-                                    watchEntries.isEmpty &&
-                                    currentIdx == 0,
+                                    idx == 0 && index == 0,
                                 onFocus: (focused) {
                                   if (focused) {
                                     Scrollable.ensureVisible(
@@ -887,37 +982,34 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                       curve: Curves.easeOutCubic,
                                       alignment: 0.35,
                                     );
-                                    setState(() {
-                                      _heroInfo = HeroInfo(
-                                        group.items[idx].name,
-                                        group.items[idx].background ??
-                                            group.items[idx].poster,
-                                        group.items[idx].description,
-                                        _guessType(group.items[idx]),
-                                        group.title,
-                                      );
-                                    });
+                                    _updateHero(
+                                      displayItems[idx].name,
+                                      displayItems[idx].background,
+                                      displayItems[idx].description,
+                                      _guessType(displayItems[idx]),
+                                      group.title,
+                                      displayItems[idx].id,
+                                    );
                                   }
                                 },
                               );
                             },
                           )
                         : SizedBox(
-                            height: 255,
+                            height: 255 * scale,
                             child: ListView.builder(
                               clipBehavior: Clip.none,
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               scrollDirection: Axis.horizontal,
-                              itemCount: group.items.length.clamp(0, 10),
+                              itemCount: displayItems.length,
                               itemBuilder: (context, idx) {
                                 return PosterCard(
-                                  item: group.items[idx],
+                                  item: displayItems[idx],
+                                  scale: scale,
                                   onSelect: widget.onSelect,
-                                  type: _guessType(group.items[idx]),
+                                  type: _guessType(displayItems[idx]),
                                   autofocus:
-                                      idx == 0 &&
-                                      watchEntries.isEmpty &&
-                                      currentIdx == 0,
+                                      idx == 0 && index == 0,
                                   onFocus: (focused) {
                                     if (focused) {
                                       Scrollable.ensureVisible(
@@ -928,16 +1020,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                         curve: Curves.easeOutCubic,
                                         alignment: 0.35,
                                       );
-                                      setState(() {
-                                        _heroInfo = HeroInfo(
-                                          group.items[idx].name,
-                                          group.items[idx].background ??
-                                              group.items[idx].poster,
-                                          group.items[idx].description,
-                                          _guessType(group.items[idx]),
-                                          group.title,
-                                        );
-                                      });
+                                      _updateHero(
+                                        displayItems[idx].name,
+                                        displayItems[idx].background,
+                                        displayItems[idx].description,
+                                        _guessType(displayItems[idx]),
+                                        group.title,
+                                        displayItems[idx].id,
+                                      );
                                     }
                                   },
                                 );
@@ -959,8 +1049,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 class PosterCard extends StatefulWidget {
   final MetaPreview item;
   final bool showTitle;
-  final Function(MetaPreview, String) onSelect;
+  final Function(MetaPreview item, String type, {String? initialVideoId}) onSelect;
   final String type;
+  final double scale;
   final bool autofocus;
   final Function(bool)? onFocus;
 
@@ -968,6 +1059,7 @@ class PosterCard extends StatefulWidget {
     super.key,
     required this.item,
     this.showTitle = false,
+    this.scale = 1.0,
     required this.onSelect,
     required this.type,
     this.autofocus = false,
@@ -1099,13 +1191,15 @@ class _PosterCardState extends State<PosterCard> {
 class ContinueWatchingCard extends StatefulWidget {
   final WatchEntry entry;
   final Function(WatchEntry) onResume;
-  final Function(MetaPreview, String) onSelect;
+  final double scale;
+  final Function(MetaPreview item, String type, {String? initialVideoId}) onSelect;
   final bool autofocus;
   final Function(bool)? onFocus;
 
   const ContinueWatchingCard({
     super.key,
     required this.entry,
+    this.scale = 1.0,
     required this.onResume,
     required this.onSelect,
     this.autofocus = false,
@@ -1138,7 +1232,7 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       child: Container(
-        width: 140,
+        width: 140 * widget.scale,
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
@@ -1193,19 +1287,25 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                 right: 8,
                 bottom: 12,
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () {
+                    final mainId = widget.entry.seriesId;
                     final previewItem = MetaPreview(
-                      id: widget.entry.id,
+                      id: mainId,
                       type: widget.entry.type,
                       name: widget.entry.name,
                       poster: widget.entry.poster,
                     );
-                    widget.onSelect(previewItem, widget.entry.type);
+                    widget.onSelect(
+                      previewItem,
+                      widget.entry.type,
+                      initialVideoId: widget.entry.type == 'series' ? widget.entry.id : null,
+                    );
                   },
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: const BoxDecoration(
-                      color: Colors.black54,
+                      color: Colors.black87,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -1220,16 +1320,15 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                 left: 8,
                 top: 8,
                 child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () {
                     WatchHistory.instance.remove(widget.entry.id);
-                    setState(
-                      () {},
-                    ); // trigger rebuild if necessary, or let parent handle
+                    setState(() {});
                   },
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: const BoxDecoration(
-                      color: Colors.black54,
+                      color: Colors.black87,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(
@@ -1240,6 +1339,35 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
                   ),
                 ),
               ),
+              if (widget.entry.type == 'series' && widget.entry.id.contains(':')) ...[
+                Builder(builder: (context) {
+                  final parts = widget.entry.id.split(':');
+                  if (parts.length >= 3) {
+                    final epBadge = 'S${parts[1]} E${parts[2]}';
+                    return Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.8), width: 1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          epBadge,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return const SizedBox();
+                }),
+              ],
               Positioned(
                 left: 0,
                 right: 0,
