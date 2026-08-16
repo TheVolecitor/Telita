@@ -28,7 +28,9 @@ List<_AppCaption> _parseSrtOrVtt(String content) {
   for (final block in blocks) {
     final lines = block.trim().split('\n');
     for (int i = 0; i < lines.length; i++) {
-      final timeMatch = RegExp(r'(\d+):(\d+):(\d+)[,\.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,\.](\d+)').firstMatch(lines[i]);
+      final timeMatch = RegExp(
+        r'(\d+):(\d+):(\d+)[,\.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,\.](\d+)',
+      ).firstMatch(lines[i]);
       if (timeMatch != null && i + 1 < lines.length) {
         final start = Duration(
           hours: int.parse(timeMatch[1]!),
@@ -42,8 +44,13 @@ List<_AppCaption> _parseSrtOrVtt(String content) {
           seconds: int.parse(timeMatch[7]!),
           milliseconds: int.parse(timeMatch[8]!),
         );
-        final textLines = lines.sublist(i + 1).where((l) => !RegExp(r'^\d+$').hasMatch(l)).toList();
-        final text = textLines.join('\n').replaceAll(RegExp(r'<[^>]*>'), '').trim();
+        final textLines =
+            lines
+                .sublist(i + 1)
+                .where((l) => !RegExp(r'^\d+$').hasMatch(l))
+                .toList();
+        final text =
+            textLines.join('\n').replaceAll(RegExp(r'<[^>]*>'), '').trim();
         if (text.isNotEmpty) {
           captions.add(_AppCaption(start: start, end: end, text: text));
         }
@@ -97,21 +104,37 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if ((Platform.isWindows ||
+        Platform.isLinux ||
+        Platform.isMacOS ||
+        Platform.isAndroid ||
+        Platform.isIOS)) {
       _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
-        if (mounted && FtvMedia3PlayerController().videoPlayerController == null) {
+        if (mounted &&
+            FtvMedia3PlayerController().videoPlayerController == null) {
           setState(() => _loadingTimedOut = true);
         }
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+      if (!(Platform.isWindows ||
+          Platform.isLinux ||
+          Platform.isMacOS ||
+          Platform.isAndroid ||
+          Platform.isIOS)) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
       try {
-        if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+        if ((Platform.isWindows ||
+            Platform.isLinux ||
+            Platform.isMacOS ||
+            Platform.isAndroid ||
+            Platform.isIOS)) {
           _overlayController = Media3UiController();
-          _overlayController!.initForWindows(widget.playlist, widget.initialIndex);
+          _overlayController!.initForWindows(
+            widget.playlist,
+            widget.initialIndex,
+          );
           setState(() {});
         }
         await _controller.openNativePlayer(
@@ -121,7 +144,11 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       } catch (e) {
         if (mounted) {
           _showErrorSnackBar(context, e.toString());
-          if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+          if ((Platform.isWindows ||
+              Platform.isLinux ||
+              Platform.isMacOS ||
+              Platform.isAndroid ||
+              Platform.isIOS)) {
             setState(() => _loadingTimedOut = true);
           }
         }
@@ -146,7 +173,14 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if (state == AppLifecycleState.paused &&
+        mounted &&
+        !isClose &&
+        !(Platform.isWindows ||
+            Platform.isLinux ||
+            Platform.isMacOS ||
+            Platform.isAndroid ||
+            Platform.isIOS)) {
       isClose = true;
       Navigator.of(context).maybePop();
     }
@@ -176,7 +210,11 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   Widget build(BuildContext context) {
     // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
     // We just need a black background behind it while it loads.
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if ((Platform.isWindows ||
+        Platform.isLinux ||
+        Platform.isMacOS ||
+        Platform.isAndroid ||
+        Platform.isIOS)) {
       final controller = FtvMedia3PlayerController().videoPlayerController;
       if (controller == null) {
         return Scaffold(
@@ -184,29 +222,43 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
           body: Stack(
             children: [
               Center(
-                child: _loadingTimedOut
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.error_outline, color: Colors.white54, size: 48),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Player failed to load',
-                            style: TextStyle(color: Colors.white70, fontSize: 16),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'MPV did not initialize in time.',
-                            style: TextStyle(color: Colors.white38, fontSize: 13),
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton(
-                            onPressed: () => Navigator.of(context).maybePop(),
-                            child: const Text('Go Back'),
-                          ),
-                        ],
-                      )
-                    : const BrandLoadingIndicator(size: 72, color: AppTheme.fullFocusColor),
+                child:
+                    _loadingTimedOut
+                        ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.white54,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Player failed to load',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'MPV did not initialize in time.',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(context).maybePop(),
+                              child: const Text('Go Back'),
+                            ),
+                          ],
+                        )
+                        : const BrandLoadingIndicator(
+                          size: 72,
+                          color: AppTheme.fullFocusColor,
+                        ),
               ),
               Positioned(
                 top: 16,
@@ -332,10 +384,14 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       _activeExternalSubIndex = index;
       _externalCaptions = [];
     });
-    try { widget.controller.setSubtitleTracks([]); } catch (_) {}
-    
     try {
-      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      widget.controller.setSubtitleTracks([]);
+    } catch (_) {}
+
+    try {
+      final res = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
       if (res.statusCode == 200 && mounted) {
         final parsed = _parseSrtOrVtt(res.body);
         setState(() {
@@ -350,7 +406,9 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       _activeExternalSubIndex = -1;
       _externalCaptions = [];
     });
-    try { widget.controller.setSubtitleTracks([]); } catch (_) {}
+    try {
+      widget.controller.setSubtitleTracks([]);
+    } catch (_) {}
   }
 
   @override
@@ -361,12 +419,17 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     _isInitialized = widget.controller.value.isInitialized;
     widget.controller.addListener(_checkInit);
     _subtitleStyle = widget.overlayController?.playerState.subtitleStyle;
-    _styleSubscription = widget.overlayController?.playerStateStream.listen((state) {
+    _styleSubscription = widget.overlayController?.playerStateStream.listen((
+      state,
+    ) {
       if (mounted && state.subtitleStyle != _subtitleStyle) {
         setState(() => _subtitleStyle = state.subtitleStyle);
       }
     });
-    _historyTimer = Timer.periodic(const Duration(seconds: 5), _syncWatchHistory);
+    _historyTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      _syncWatchHistory,
+    );
   }
 
   void _syncWatchHistory([Timer? _]) {
@@ -376,10 +439,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
     final positionSec = value.position.inSeconds;
     final durationSec = value.duration.inSeconds;
-    
+
     if (durationSec == 0 || positionSec <= 5) return;
-    
-    if (widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length) {
+
+    if (widget.initialIndex >= 0 &&
+        widget.initialIndex < widget.playlist.length) {
       final item = widget.playlist[widget.initialIndex];
       if (item.saveWatchTime != null) {
         item.saveWatchTime!(
@@ -402,9 +466,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
           _selectDefaultAudioTrack();
           _selectDefaultSubtitleTrack();
           // Resume from saved watch position
-          final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
-              ? widget.playlist[widget.initialIndex]
-              : null;
+          final item =
+              widget.playlist.isNotEmpty &&
+                      widget.initialIndex >= 0 &&
+                      widget.initialIndex < widget.playlist.length
+                  ? widget.playlist[widget.initialIndex]
+                  : null;
           final start = item?.startPosition;
           if (start != null && start > 5) {
             // Small delay so fvp has fully buffered enough to accept a seek
@@ -425,7 +492,8 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   }
 
   void _sendScrobbleEvent(String action) {
-    if (widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length) {
+    if (widget.initialIndex >= 0 &&
+        widget.initialIndex < widget.playlist.length) {
       final item = widget.playlist[widget.initialIndex];
       if (item.onScrobble != null) {
         final pos = widget.controller.value.position.inSeconds;
@@ -446,7 +514,9 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       final audioTracks = mediaInfo?.audio ?? [];
       if (audioTracks.isEmpty) {
         // Still no tracks — just pick first
-        try { widget.controller.setAudioTracks([0]); } catch (_) {}
+        try {
+          widget.controller.setAudioTracks([0]);
+        } catch (_) {}
         return;
       }
 
@@ -455,9 +525,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         for (int i = 0; i < audioTracks.length; i++) {
           final lang = audioTracks[i].metadata['language']?.toUpperCase() ?? '';
           final title = audioTracks[i].metadata['title']?.toUpperCase() ?? '';
-          
-          if (lang == 'ENG' || lang == 'EN' || lang == 'ENGLISH' || 
-              title.contains('ENG') || title.contains('ENGLISH')) {
+
+          if (lang == 'ENG' ||
+              lang == 'EN' ||
+              lang == 'ENGLISH' ||
+              title.contains('ENG') ||
+              title.contains('ENGLISH')) {
             targetPosition = i;
             break;
           }
@@ -471,17 +544,24 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     Future.delayed(const Duration(milliseconds: 800), () {
       if (!mounted) return;
 
-      final playerSettings = widget.overlayController?.playerState.playerSettings;
+      final playerSettings =
+          widget.overlayController?.playerState.playerSettings;
       final subtitleEnabled = playerSettings?.forcedAutoEnable ?? true;
 
       if (!subtitleEnabled) {
-        try { widget.controller.setSubtitleTracks([]); } catch (_) {}
+        try {
+          widget.controller.setSubtitleTracks([]);
+        } catch (_) {}
         _disableExternalSubtitle();
         return;
       }
 
-      final preferredLangs = playerSettings?.preferredTextLanguages ?? const ['eng'];
-      final prefLang = preferredLangs.isNotEmpty ? preferredLangs.first.toLowerCase() : 'eng';
+      final preferredLangs =
+          playerSettings?.preferredTextLanguages ?? const ['eng'];
+      final prefLang =
+          preferredLangs.isNotEmpty
+              ? preferredLangs.first.toLowerCase()
+              : 'eng';
 
       // 1. PRIORITIZE IN-STREAM CONTAINER SUBTITLES FIRST
       final mediaInfo = widget.controller.getMediaInfo();
@@ -495,7 +575,8 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         if (lang == prefLang ||
             lang.startsWith(prefLang) ||
             title.contains(prefLang) ||
-            (prefLang == 'eng' && (lang == 'en' || lang == 'english' || title.contains('eng')))) {
+            (prefLang == 'eng' &&
+                (lang == 'en' || lang == 'english' || title.contains('eng')))) {
           matchedInStreamIndex = i;
           break;
         }
@@ -510,9 +591,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       }
 
       // 2. IF NO IN-STREAM SUBTITLE FOUND FOR PREFERRED LANG, CHECK EXTERNAL ADDON SUBTITLES
-      final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
-          ? widget.playlist[widget.initialIndex]
-          : null;
+      final item =
+          widget.playlist.isNotEmpty &&
+                  widget.initialIndex >= 0 &&
+                  widget.initialIndex < widget.playlist.length
+              ? widget.playlist[widget.initialIndex]
+              : null;
       final externalSubs = item?.subtitles ?? [];
 
       if (externalSubs.isNotEmpty && _activeExternalSubIndex == -1) {
@@ -586,7 +670,9 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   }
 
   void _togglePlay() {
-    widget.controller.value.isPlaying ? widget.controller.pause() : widget.controller.play();
+    widget.controller.value.isPlaying
+        ? widget.controller.pause()
+        : widget.controller.play();
   }
 
   void _toggleFullscreen() {
@@ -674,12 +760,16 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         if (_controlsVisible && _controlsMounted) {
           _playButtonFocusNode.requestFocus();
         } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          widget.controller.setVolume((widget.controller.value.volume - 0.05).clamp(0.0, 1.0));
+          widget.controller.setVolume(
+            (widget.controller.value.volume - 0.05).clamp(0.0, 1.0),
+          );
         }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowUp:
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          widget.controller.setVolume((widget.controller.value.volume + 0.05).clamp(0.0, 1.0));
+          widget.controller.setVolume(
+            (widget.controller.value.volume + 0.05).clamp(0.0, 1.0),
+          );
         }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.escape:
@@ -695,12 +785,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      cursor: _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
+      cursor:
+          _controlsVisible ? SystemMouseCursors.basic : SystemMouseCursors.none,
       onHover: (_) => _onMouseActivity(),
       onEnter: (_) => _onMouseActivity(),
       child: Focus(
@@ -722,16 +811,20 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                 },
                 onDoubleTap: _toggleFullscreen,
                 child: RepaintBoundary(
-                  child: _isInitialized
-                      ? Center(
-                          child: AspectRatio(
-                            aspectRatio: widget.controller.value.aspectRatio,
-                            child: VideoPlayer(widget.controller),
+                  child:
+                      _isInitialized
+                          ? Center(
+                            child: AspectRatio(
+                              aspectRatio: widget.controller.value.aspectRatio,
+                              child: VideoPlayer(widget.controller),
+                            ),
+                          )
+                          : const Center(
+                            child: BrandLoadingIndicator(
+                              size: 72,
+                              color: AppTheme.fullFocusColor,
+                            ),
                           ),
-                        )
-                      : const Center(
-                          child: BrandLoadingIndicator(size: 72, color: AppTheme.fullFocusColor),
-                        ),
                 ),
               ),
             ),
@@ -741,28 +834,45 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               valueListenable: widget.controller,
               builder: (context, value, child) {
                 if (value.hasError) {
-                  final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
-                      ? widget.playlist[widget.initialIndex]
-                      : null;
+                  final item =
+                      widget.playlist.isNotEmpty &&
+                              widget.initialIndex >= 0 &&
+                              widget.initialIndex < widget.playlist.length
+                          ? widget.playlist[widget.initialIndex]
+                          : null;
                   return Container(
                     color: Colors.black87,
                     child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.error_outline, color: Colors.white54, size: 64),
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.white54,
+                            size: 64,
+                          ),
                           const SizedBox(height: 24),
                           const Text(
                             'Playback Error',
-                            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 48.0),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 48.0,
+                            ),
                             child: Text(
-                              value.errorDescription ?? 'Unknown error occurred.',
+                              value.errorDescription ??
+                                  'Unknown error occurred.',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.white54, fontSize: 15),
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 15,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 48),
@@ -773,9 +883,14 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                 icon: const Icon(Icons.arrow_back),
                                 label: const Text('Exit'),
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.white.withOpacity(0.1),
+                                  backgroundColor: Colors.white.withOpacity(
+                                    0.1,
+                                  ),
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 16,
+                                  ),
                                 ),
                                 onPressed: widget.onBack,
                               ),
@@ -786,7 +901,10 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: AppTheme.fullFocusColor,
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 16,
+                                  ),
                                 ),
                                 onPressed: () {
                                   // Can't easily restart a failed fvp instance from overlay
@@ -794,19 +912,31 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                   widget.onBack();
                                 },
                               ),
-                              if (item?.url != null && item!.url.isNotEmpty) ...[
+                              if (item?.url != null &&
+                                  item!.url.isNotEmpty) ...[
                                 const SizedBox(width: 16),
                                 ElevatedButton.icon(
                                   icon: const Icon(Icons.play_arrow),
                                   label: const Text('Open in VLC'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white.withOpacity(0.1),
+                                    backgroundColor: Colors.white.withOpacity(
+                                      0.1,
+                                    ),
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 16,
+                                    ),
                                   ),
                                   onPressed: () {
                                     if (Platform.isWindows) {
-                                      Process.start('cmd', ['/c', 'start', '', 'vlc', item.url]);
+                                      Process.start('cmd', [
+                                        '/c',
+                                        'start',
+                                        '',
+                                        'vlc',
+                                        item.url,
+                                      ]);
                                     } else {
                                       Process.start('vlc', [item.url]);
                                     }
@@ -817,13 +947,24 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                   icon: const Icon(Icons.play_circle),
                                   label: const Text('Open in MPV'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.white.withOpacity(0.1),
+                                    backgroundColor: Colors.white.withOpacity(
+                                      0.1,
+                                    ),
                                     foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 16,
+                                    ),
                                   ),
                                   onPressed: () {
                                     if (Platform.isWindows) {
-                                      Process.start('cmd', ['/c', 'start', '', 'mpv', item.url]);
+                                      Process.start('cmd', [
+                                        '/c',
+                                        'start',
+                                        '',
+                                        'mpv',
+                                        item.url,
+                                      ]);
                                     } else {
                                       Process.start('mpv', [item.url]);
                                     }
@@ -839,11 +980,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                 }
                 return value.isBuffering
                     ? const Center(
-                        child: BrandLoadingIndicator(
-                          size: 80,
-                          color: AppTheme.fullFocusColor,
-                        ),
-                      )
+                      child: BrandLoadingIndicator(
+                        size: 80,
+                        color: AppTheme.fullFocusColor,
+                      ),
+                    )
                     : const SizedBox.shrink();
               },
             ),
@@ -866,55 +1007,125 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
                   final style = _subtitleStyle ?? SubtitleStyle();
                   final fgColor = style.foregroundColor?.color ?? Colors.white;
-                  final bgColor = style.backgroundColor?.color ?? Colors.transparent;
-                  final winColor = style.windowColor?.color ?? Colors.transparent;
+                  final bgColor =
+                      style.backgroundColor?.color ?? Colors.transparent;
+                  final winColor =
+                      style.windowColor?.color ?? Colors.transparent;
 
                   final fontSizeMultiplier = style.textSizeFraction ?? 1.0;
                   final baseFontSize = 32.0 * fontSizeMultiplier;
 
-                  final bottomPad = (style.bottomPadding?.toDouble() ?? 0.0) + (_controlsVisible ? 110.0 : 48.0);
+                  final bottomPad =
+                      (style.bottomPadding?.toDouble() ?? 0.0) +
+                      (_controlsVisible ? 110.0 : 48.0);
                   final leftPad = (style.leftPadding?.toDouble() ?? 0.0) + 48.0;
-                  final rightPad = (style.rightPadding?.toDouble() ?? 0.0) + 48.0;
+                  final rightPad =
+                      (style.rightPadding?.toDouble() ?? 0.0) + 48.0;
 
                   List<Shadow>? textShadows;
                   if (style.edgeType == SubtitleEdgeType.dropShadow) {
                     textShadows = [
-                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, -1)),
-                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, -1)),
-                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, 1)),
-                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, 1)),
-                      Shadow(blurRadius: 4, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(2, 2)),
+                      Shadow(
+                        blurRadius: 0,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(-1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(1, 1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(-1, 1),
+                      ),
+                      Shadow(
+                        blurRadius: 4,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(2, 2),
+                      ),
                     ];
                   } else if (style.edgeType == SubtitleEdgeType.outline) {
                     final edgeCol = style.edgeColor?.color ?? Colors.black;
                     textShadows = [
-                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(-1, -1)),
-                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(1, -1)),
-                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(1, 1)),
-                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(-1, 1)),
+                      Shadow(
+                        blurRadius: 0,
+                        color: edgeCol,
+                        offset: const Offset(-1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: edgeCol,
+                        offset: const Offset(1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: edgeCol,
+                        offset: const Offset(1, 1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: edgeCol,
+                        offset: const Offset(-1, 1),
+                      ),
                     ];
                   } else if (style.edgeType == SubtitleEdgeType.raised) {
                     textShadows = [
-                      Shadow(blurRadius: 2, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, -1)),
+                      Shadow(
+                        blurRadius: 2,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(-1, -1),
+                      ),
                     ];
                   } else if (style.edgeType == SubtitleEdgeType.depressed) {
                     textShadows = [
-                      Shadow(blurRadius: 2, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, 1)),
+                      Shadow(
+                        blurRadius: 2,
+                        color: style.edgeColor?.color ?? Colors.black,
+                        offset: const Offset(1, 1),
+                      ),
                     ];
                   } else {
                     // Thin black boundary outline + soft drop shadow
                     textShadows = const [
-                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(-1, -1)),
-                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(1, -1)),
-                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(1, 1)),
-                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(-1, 1)),
-                      Shadow(blurRadius: 3, color: Colors.black54, offset: Offset(1.5, 1.5)),
+                      Shadow(
+                        blurRadius: 0,
+                        color: Colors.black,
+                        offset: Offset(-1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: Colors.black,
+                        offset: Offset(1, -1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: Colors.black,
+                        offset: Offset(1, 1),
+                      ),
+                      Shadow(
+                        blurRadius: 0,
+                        color: Colors.black,
+                        offset: Offset(-1, 1),
+                      ),
+                      Shadow(
+                        blurRadius: 3,
+                        color: Colors.black54,
+                        offset: Offset(1.5, 1.5),
+                      ),
                     ];
                   }
 
-                  final Color containerColor = (winColor != Colors.transparent && winColor.alpha > 0)
-                      ? winColor
-                      : (bgColor != Colors.transparent && bgColor.alpha > 0)
+                  final Color containerColor =
+                      (winColor != Colors.transparent && winColor.alpha > 0)
+                          ? winColor
+                          : (bgColor != Colors.transparent && bgColor.alpha > 0)
                           ? bgColor
                           : Colors.transparent;
 
@@ -925,17 +1136,27 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     child: IgnorePointer(
                       child: Center(
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           decoration: BoxDecoration(
                             color: containerColor,
-                            borderRadius: containerColor != Colors.transparent ? BorderRadius.circular(8) : null,
+                            borderRadius:
+                                containerColor != Colors.transparent
+                                    ? BorderRadius.circular(8)
+                                    : null,
                           ),
                           child: Text(
                             captionText,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontFamily: 'Arial',
-                              fontFamilyFallback: const ['Roboto', 'Segoe UI', 'sans-serif'],
+                              fontFamilyFallback: const [
+                                'Roboto',
+                                'Segoe UI',
+                                'sans-serif',
+                              ],
                               color: fgColor,
                               fontSize: baseFontSize,
                               fontWeight: FontWeight.w500,
@@ -966,20 +1187,28 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     onToggleFullscreen: _toggleFullscreen,
                     playButtonFocusNode: _playButtonFocusNode,
                     onBackToPlayer: () => _rootFocusNode.requestFocus(),
-                    externalSubtitles: (widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length)
-                        ? (widget.playlist[widget.initialIndex].subtitles ?? const [])
-                        : const [],
+                    externalSubtitles:
+                        (widget.playlist.isNotEmpty &&
+                                widget.initialIndex >= 0 &&
+                                widget.initialIndex < widget.playlist.length)
+                            ? (widget.playlist[widget.initialIndex].subtitles ??
+                                const [])
+                            : const [],
                     activeExternalSubIndex: _activeExternalSubIndex,
-                    onSelectExternalSubtitle: (idx, url) => _loadExternalSubtitle(idx, url),
+                    onSelectExternalSubtitle:
+                        (idx, url) => _loadExternalSubtitle(idx, url),
                     onDisableExternalSubtitle: _disableExternalSubtitle,
                   ),
                 ),
               ),
             _WindowsSkipSegmentOverlay(
               controller: widget.controller,
-              playItem: widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
-                  ? widget.playlist[widget.initialIndex]
-                  : null,
+              playItem:
+                  widget.playlist.isNotEmpty &&
+                          widget.initialIndex >= 0 &&
+                          widget.initialIndex < widget.playlist.length
+                      ? widget.playlist[widget.initialIndex]
+                      : null,
             ),
           ],
         ),
@@ -998,10 +1227,12 @@ class _WindowsSkipSegmentOverlay extends StatefulWidget {
   });
 
   @override
-  State<_WindowsSkipSegmentOverlay> createState() => _WindowsSkipSegmentOverlayState();
+  State<_WindowsSkipSegmentOverlay> createState() =>
+      _WindowsSkipSegmentOverlayState();
 }
 
-class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> {
+class _WindowsSkipSegmentOverlayState
+    extends State<_WindowsSkipSegmentOverlay> {
   bool _isFocused = false;
   bool _hasAutoAdvanced = false;
 
@@ -1022,10 +1253,17 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
         final currentSecs = currentMs ~/ 1000;
         final remainingMs = durationMs - currentMs;
         final double remainingSecs = remainingMs / 1000.0;
-        final bool isNextEpisode = playItem.hasNextEpisode && durationMs > 0 && remainingSecs <= 10.0 && remainingSecs >= 0.0;
+        final bool isNextEpisode =
+            playItem.hasNextEpisode &&
+            durationMs > 0 &&
+            remainingSecs <= 10.0 &&
+            remainingSecs >= 0.0;
 
         // Auto-advance: when video naturally ends, trigger next episode
-        if (!_hasAutoAdvanced && playItem.hasNextEpisode && durationMs > 0 && remainingMs <= 0) {
+        if (!_hasAutoAdvanced &&
+            playItem.hasNextEpisode &&
+            durationMs > 0 &&
+            remainingMs <= 0) {
           _hasAutoAdvanced = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -1036,7 +1274,9 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
         }
 
         MediaSegment? active;
-        if (!isNextEpisode && playItem.segments != null && playItem.segments!.isNotEmpty) {
+        if (!isNextEpisode &&
+            playItem.segments != null &&
+            playItem.segments!.isNotEmpty) {
           for (final seg in playItem.segments!) {
             final start = seg.startSec ?? 0;
             if (currentSecs >= start && currentSecs < seg.endSec) {
@@ -1052,7 +1292,10 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
 
         // --- UpNext Card ---
         if (isNextEpisode) {
-          final double progress = (1.0 - (remainingMs / 10000.0)).clamp(0.0, 1.0);
+          final double progress = (1.0 - (remainingMs / 10000.0)).clamp(
+            0.0,
+            1.0,
+          );
           final seasonStr = playItem.nextEpisodeSeason?.toString();
           final epStr = playItem.nextEpisodeNumber?.toString();
           String sxe = "";
@@ -1100,12 +1343,15 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
                       borderRadius: BorderRadius.circular(10),
                       child: Stack(
                         children: [
-                          if (playItem.nextEpisodeThumbnail != null && playItem.nextEpisodeThumbnail!.isNotEmpty)
+                          if (playItem.nextEpisodeThumbnail != null &&
+                              playItem.nextEpisodeThumbnail!.isNotEmpty)
                             Positioned.fill(
                               child: Image.network(
                                 playItem.nextEpisodeThumbnail!,
                                 fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                                errorBuilder:
+                                    (context, error, stackTrace) =>
+                                        const SizedBox.shrink(),
                               ),
                             ),
                           Positioned.fill(
@@ -1129,7 +1375,11 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
                               children: [
                                 Row(
                                   children: [
-                                    const Icon(Icons.skip_next, color: Colors.white70, size: 16),
+                                    const Icon(
+                                      Icons.skip_next,
+                                      color: Colors.white70,
+                                      size: 16,
+                                    ),
                                     const SizedBox(width: 6),
                                     const Text(
                                       'UP NEXT',
@@ -1185,7 +1435,10 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
                             top: 12,
                             right: 12,
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.black54,
                                 borderRadius: BorderRadius.circular(12),
@@ -1212,13 +1465,14 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
         }
 
         // --- Skip Intro/Recap/Credits ---
-        final label = active!.type.toLowerCase() == 'intro'
-            ? 'Skip Intro'
-            : active.type.toLowerCase() == 'recap'
+        final label =
+            active!.type.toLowerCase() == 'intro'
+                ? 'Skip Intro'
+                : active.type.toLowerCase() == 'recap'
                 ? 'Skip Recap'
                 : active.type.toLowerCase() == 'credits'
-                    ? 'Skip Credits'
-                    : 'Skip ${active.type}';
+                ? 'Skip Credits'
+                : 'Skip ${active.type}';
 
         return Align(
           alignment: Alignment.bottomRight,
@@ -1229,8 +1483,8 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
               onKeyEvent: (node, event) {
                 if (event is KeyDownEvent &&
                     (event.logicalKey == LogicalKeyboardKey.select ||
-                     event.logicalKey == LogicalKeyboardKey.enter ||
-                     event.logicalKey == LogicalKeyboardKey.space)) {
+                        event.logicalKey == LogicalKeyboardKey.enter ||
+                        event.logicalKey == LogicalKeyboardKey.space)) {
                   widget.controller.seekTo(Duration(seconds: active!.endSec));
                   return KeyEventResult.handled;
                 }
@@ -1241,9 +1495,15 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
                   widget.controller.seekTo(Duration(seconds: active!.endSec));
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
-                    color: _isFocused ? AppTheme.fullFocusColor : Colors.black.withOpacity(0.85),
+                    color:
+                        _isFocused
+                            ? AppTheme.fullFocusColor
+                            : Colors.black.withOpacity(0.85),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: _isFocused ? Colors.white : Colors.white30,
@@ -1325,166 +1585,180 @@ class _ControlsOverlay extends StatelessWidget {
         children: [
           // Gradient scrim at top and bottom.
           Positioned.fill(
-          child: Column(
-            children: [
-              Container(
-                height: 120,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black87, Colors.transparent],
-                  ),
-                ),
-              ),
-              const Spacer(),
-              Container(
-                height: 120,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [Colors.black87, Colors.transparent],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // Top bar: back button.
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: SafeArea(
-            child: Row(
+            child: Column(
               children: [
-                FocusTraversalOrder(
-                  order: const NumericFocusOrder(0),
-                  child: _TvIconButton(
-                    icon: Icons.arrow_back,
-                    onPressed: onBack,
-                    tooltip: 'Back',
+                Container(
+                  height: 120,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  height: 120,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        ),
 
-        // Bottom bar: play/pause, seek, position, volume, extras.
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+          // Top bar: back button.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Row(
                 children: [
                   FocusTraversalOrder(
-                    order: const NumericFocusOrder(1),
-                    child: _SeekBar(controller: controller, onActivity: onActivity),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      // Play / pause
-                      ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: controller,
-                        builder: (context, val, _) {
-                          final playing = val.isPlaying;
-                          return FocusTraversalOrder(
-                            order: const NumericFocusOrder(2),
-                            child: _TvIconButton(
-                              focusNode: playButtonFocusNode,
-                              icon: playing ? Icons.pause : Icons.play_arrow,
-                              tooltip: playing ? 'Pause' : 'Play',
-                              onPressed: () {
-                                onActivity();
-                                playing ? controller.pause() : controller.play();
-                              },
-                              onUpKey: onBackToPlayer,
-                            ),
-                          );
-                        },
-                      ),
-                      // Position / duration
-                      ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: controller,
-                        builder: (context, val, _) {
-                          return Text(
-                            '${_fmt(val.position)} / ${_fmt(val.duration)}',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13),
-                          );
-                        },
-                      ),
-                      const Spacer(),
-                      FocusTraversalOrder(
-                        order: const NumericFocusOrder(3),
-                        child: SubtitleTrackSelector(
-                          controller: controller,
-                          onActivity: onActivity,
-                          externalSubtitles: externalSubtitles,
-                          activeExternalSubIndex: activeExternalSubIndex,
-                          onSelectExternalSubtitle: onSelectExternalSubtitle,
-                          onDisableExternalSubtitle: onDisableExternalSubtitle,
-                        ),
-                      ),
-                      FocusTraversalOrder(
-                        order: const NumericFocusOrder(4),
-                        child: AudioTrackSelector(controller: controller, onActivity: onActivity),
-                      ),
-                      // Volume
-                      ValueListenableBuilder<VideoPlayerValue>(
-                        valueListenable: controller,
-                        builder: (context, val, _) {
-                          final vol = val.volume;
-                          return FocusTraversalOrder(
-                            order: const NumericFocusOrder(5),
-                            child: _TvIconButton(
-                              icon: vol == 0
-                                  ? Icons.volume_off
-                                  : vol < 0.5
-                                      ? Icons.volume_down
-                                      : Icons.volume_up,
-                              tooltip: 'Volume',
-                              onPressed: () {
-                                onActivity();
-                                controller.setVolume(vol > 0 ? 0 : 1.0);
-                              },
-                            ),
-                          );
-                        },
-                      ),
-
-                      FocusTraversalOrder(
-                        order: const NumericFocusOrder(6),
-                        child: FullscreenButton(
-                          onActivity: onActivity,
-                          isFullscreen: isFullscreen,
-                          onToggle: onToggleFullscreen,
-                        ),
-                      ),
-                      FocusTraversalOrder(
-                        order: const NumericFocusOrder(7),
-                        child: PlayerMoreMenuButton(
-                          controller: controller,
-                          playlist: playlist,
-                          initialIndex: initialIndex,
-                        ),
-                      ),
-                    ],
+                    order: const NumericFocusOrder(0),
+                    child: _TvIconButton(
+                      icon: Icons.arrow_back,
+                      onPressed: onBack,
+                      tooltip: 'Back',
+                    ),
                   ),
                 ],
               ),
             ),
           ),
-        ),
-      ],
-    ));
+
+          // Bottom bar: play/pause, seek, position, volume, extras.
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FocusTraversalOrder(
+                      order: const NumericFocusOrder(1),
+                      child: _SeekBar(
+                        controller: controller,
+                        onActivity: onActivity,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        // Play / pause
+                        ValueListenableBuilder<VideoPlayerValue>(
+                          valueListenable: controller,
+                          builder: (context, val, _) {
+                            final playing = val.isPlaying;
+                            return FocusTraversalOrder(
+                              order: const NumericFocusOrder(2),
+                              child: _TvIconButton(
+                                focusNode: playButtonFocusNode,
+                                icon: playing ? Icons.pause : Icons.play_arrow,
+                                tooltip: playing ? 'Pause' : 'Play',
+                                onPressed: () {
+                                  onActivity();
+                                  playing
+                                      ? controller.pause()
+                                      : controller.play();
+                                },
+                                onUpKey: onBackToPlayer,
+                              ),
+                            );
+                          },
+                        ),
+                        // Position / duration
+                        ValueListenableBuilder<VideoPlayerValue>(
+                          valueListenable: controller,
+                          builder: (context, val, _) {
+                            return Text(
+                              '${_fmt(val.position)} / ${_fmt(val.duration)}',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                              ),
+                            );
+                          },
+                        ),
+                        const Spacer(),
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(3),
+                          child: SubtitleTrackSelector(
+                            controller: controller,
+                            onActivity: onActivity,
+                            externalSubtitles: externalSubtitles,
+                            activeExternalSubIndex: activeExternalSubIndex,
+                            onSelectExternalSubtitle: onSelectExternalSubtitle,
+                            onDisableExternalSubtitle:
+                                onDisableExternalSubtitle,
+                          ),
+                        ),
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(4),
+                          child: AudioTrackSelector(
+                            controller: controller,
+                            onActivity: onActivity,
+                          ),
+                        ),
+                        // Volume
+                        ValueListenableBuilder<VideoPlayerValue>(
+                          valueListenable: controller,
+                          builder: (context, val, _) {
+                            final vol = val.volume;
+                            return FocusTraversalOrder(
+                              order: const NumericFocusOrder(5),
+                              child: _TvIconButton(
+                                icon:
+                                    vol == 0
+                                        ? Icons.volume_off
+                                        : vol < 0.5
+                                        ? Icons.volume_down
+                                        : Icons.volume_up,
+                                tooltip: 'Volume',
+                                onPressed: () {
+                                  onActivity();
+                                  controller.setVolume(vol > 0 ? 0 : 1.0);
+                                },
+                              ),
+                            );
+                          },
+                        ),
+
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(6),
+                          child: FullscreenButton(
+                            onActivity: onActivity,
+                            isFullscreen: isFullscreen,
+                            onToggle: onToggleFullscreen,
+                          ),
+                        ),
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(7),
+                          child: PlayerMoreMenuButton(
+                            controller: controller,
+                            playlist: playlist,
+                            initialIndex: initialIndex,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _fmt(Duration d) {
@@ -1498,7 +1772,11 @@ class _ControlsOverlay extends StatelessWidget {
 class _SeekBar extends StatefulWidget {
   final VideoPlayerController controller;
   final VoidCallback onActivity;
-  const _SeekBar({super.key, required this.controller, required this.onActivity});
+  const _SeekBar({
+    super.key,
+    required this.controller,
+    required this.onActivity,
+  });
 
   @override
   State<_SeekBar> createState() => _SeekBarState();
@@ -1511,18 +1789,20 @@ class _SeekBarState extends State<_SeekBar> {
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode(onKeyEvent: (node, event) {
-      if (event is KeyDownEvent || event is KeyRepeatEvent) {
-        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          FocusScope.of(context).focusInDirection(TraversalDirection.down);
-          return KeyEventResult.handled;
-        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          FocusScope.of(context).focusInDirection(TraversalDirection.up);
-          return KeyEventResult.handled;
+    _focusNode = FocusNode(
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent || event is KeyRepeatEvent) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            FocusScope.of(context).focusInDirection(TraversalDirection.down);
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            FocusScope.of(context).focusInDirection(TraversalDirection.up);
+            return KeyEventResult.handled;
+          }
         }
-      }
-      return KeyEventResult.ignored;
-    });
+        return KeyEventResult.ignored;
+      },
+    );
   }
 
   @override
@@ -1603,7 +1883,8 @@ class _TvIconButtonState extends State<_TvIconButton> {
       onKeyEvent: (node, event) {
         if (event is KeyDownEvent) {
           // Up key: escape controls back to video surface
-          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.onUpKey != null) {
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+              widget.onUpKey != null) {
             widget.onUpKey!();
             return KeyEventResult.handled;
           }
@@ -1630,7 +1911,6 @@ class _TvIconButtonState extends State<_TvIconButton> {
 }
 
 void showTrackSelectionDialog<T>({
-
   required BuildContext context,
   required String title,
   required List<T> tracks,
@@ -1650,7 +1930,10 @@ void showTrackSelectionDialog<T>({
         ),
         title: Text(
           title,
-          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         content: SizedBox(
           width: 380,
@@ -1665,10 +1948,16 @@ void showTrackSelectionDialog<T>({
               return Container(
                 margin: const EdgeInsets.symmetric(vertical: 4),
                 decoration: BoxDecoration(
-                  color: isSelected ? AppTheme.fullFocusColor.withOpacity(0.15) : Colors.transparent,
+                  color:
+                      isSelected
+                          ? AppTheme.fullFocusColor.withOpacity(0.15)
+                          : Colors.transparent,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isSelected ? AppTheme.fullFocusColor : Colors.transparent,
+                    color:
+                        isSelected
+                            ? AppTheme.fullFocusColor
+                            : Colors.transparent,
                     width: 1,
                   ),
                 ),
@@ -1679,38 +1968,60 @@ void showTrackSelectionDialog<T>({
                         child: Text(
                           getTrackLabel(track),
                           style: TextStyle(
-                            color: isSelected ? AppTheme.fullFocusColor : Colors.white70,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            color:
+                                isSelected
+                                    ? AppTheme.fullFocusColor
+                                    : Colors.white70,
+                            fontWeight:
+                                isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                           ),
                         ),
                       ),
-                      ...badges.map((badgeText) => Container(
-                        margin: const EdgeInsets.only(left: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isSelected 
-                              ? AppTheme.fullFocusColor.withOpacity(0.2) 
-                              : Colors.white10,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(
-                            color: isSelected 
-                                ? AppTheme.fullFocusColor.withOpacity(0.5) 
-                                : Colors.white24,
-                            width: 1,
+                      ...badges.map(
+                        (badgeText) => Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                isSelected
+                                    ? AppTheme.fullFocusColor.withOpacity(0.2)
+                                    : Colors.white10,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color:
+                                  isSelected
+                                      ? AppTheme.fullFocusColor.withOpacity(0.5)
+                                      : Colors.white24,
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: TextStyle(
+                              color:
+                                  isSelected
+                                      ? AppTheme.fullFocusColor
+                                      : Colors.white70,
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                        child: Text(
-                          badgeText,
-                          style: TextStyle(
-                            color: isSelected ? AppTheme.fullFocusColor : Colors.white70,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      )),
+                      ),
                     ],
                   ),
-                  trailing: isSelected ? const Icon(Icons.check_circle, color: AppTheme.fullFocusColor) : null,
+                  trailing:
+                      isSelected
+                          ? const Icon(
+                            Icons.check_circle,
+                            color: AppTheme.fullFocusColor,
+                          )
+                          : null,
                   onTap: () {
                     onTrackSelected(track);
                     Navigator.of(context).pop();
@@ -1796,7 +2107,9 @@ class PlayerMoreMenuButton extends StatelessWidget {
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Could not open VLC. Please make sure VLC is installed.'),
+                content: Text(
+                  'Could not open VLC. Please make sure VLC is installed.',
+                ),
               ),
             );
           }
@@ -1809,7 +2122,9 @@ class PlayerMoreMenuButton extends StatelessWidget {
           try {
             await Process.run('start', [streamUrl], runInShell: true);
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Opening download link in browser...')),
+              const SnackBar(
+                content: Text('Opening download link in browser...'),
+              ),
             );
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -1818,38 +2133,46 @@ class PlayerMoreMenuButton extends StatelessWidget {
           }
         }
       },
-      itemBuilder: (context) => [
-        const PopupMenuItem(
-          value: 'vlc',
-          child: Row(
-            children: [
-              Icon(Icons.play_circle_outline, color: Colors.white70, size: 20),
-              SizedBox(width: 10),
-              Text('Open in VLC', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'copy',
-          child: Row(
-            children: [
-              Icon(Icons.copy, color: Colors.white70, size: 20),
-              SizedBox(width: 10),
-              Text('Copy Stream Link', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: 'download',
-          child: Row(
-            children: [
-              Icon(Icons.download, color: Colors.white70, size: 20),
-              SizedBox(width: 10),
-              Text('Download', style: TextStyle(color: Colors.white)),
-            ],
-          ),
-        ),
-      ],
+      itemBuilder:
+          (context) => [
+            const PopupMenuItem(
+              value: 'vlc',
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                  SizedBox(width: 10),
+                  Text('Open in VLC', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'copy',
+              child: Row(
+                children: [
+                  Icon(Icons.copy, color: Colors.white70, size: 20),
+                  SizedBox(width: 10),
+                  Text(
+                    'Copy Stream Link',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'download',
+              child: Row(
+                children: [
+                  Icon(Icons.download, color: Colors.white70, size: 20),
+                  SizedBox(width: 10),
+                  Text('Download', style: TextStyle(color: Colors.white)),
+                ],
+              ),
+            ),
+          ],
     );
   }
 }
@@ -1857,35 +2180,129 @@ class PlayerMoreMenuButton extends StatelessWidget {
 String _getLanguageName(String code) {
   final cleanCode = code.trim().toUpperCase();
   switch (cleanCode) {
-    case 'ENG': case 'EN': case 'ENGLISH': return 'English';
-    case 'ITA': case 'IT': case 'ITALIAN': return 'Italian';
-    case 'FRA': case 'FRE': case 'FR': case 'FRENCH': return 'French';
-    case 'GER': case 'DEU': case 'DE': case 'GERMAN': return 'German';
-    case 'SPA': case 'ES': case 'SPANISH': return 'Spanish';
-    case 'JPN': case 'JA': case 'JAPANESE': return 'Japanese';
-    case 'KOR': case 'KO': case 'KOREAN': return 'Korean';
-    case 'CHI': case 'ZHO': case 'ZH': case 'CHINESE': return 'Chinese';
-    case 'RUS': case 'RU': case 'RUSSIAN': return 'Russian';
-    case 'HIN': case 'HI': case 'HINDI': return 'Hindi';
-    case 'POR': case 'PT': case 'PORTUGUESE': case 'POB': case 'PBR': return 'Portuguese';
-    case 'ARA': case 'AR': case 'ARABIC': return 'Arabic';
-    case 'TUR': case 'TR': case 'TURKISH': return 'Turkish';
-    case 'POL': case 'PL': case 'POLISH': return 'Polish';
-    case 'NLD': case 'DUT': case 'NL': case 'DUTCH': return 'Dutch';
-    case 'SWE': case 'SV': case 'SWEDISH': return 'Swedish';
-    case 'NOR': case 'NO': case 'NORWEGIAN': return 'Norwegian';
-    case 'DAN': case 'DA': case 'DANISH': return 'Danish';
-    case 'FIN': case 'FI': case 'FINNISH': return 'Finnish';
-    case 'GRE': case 'ELL': case 'EL': case 'GREEK': return 'Greek';
-    case 'HUN': case 'HU': case 'HUNGARIAN': return 'Hungarian';
-    case 'CES': case 'CZE': case 'CS': case 'CZECH': return 'Czech';
-    case 'RON': case 'RUM': case 'RO': case 'ROMANIAN': return 'Romanian';
-    case 'HEB': case 'HE': case 'HEBREW': return 'Hebrew';
-    case 'VIE': case 'VI': case 'VIETNAMESE': return 'Vietnamese';
-    case 'IND': case 'ID': case 'INDONESIAN': return 'Indonesian';
-    case 'THA': case 'TH': case 'THAI': return 'Thai';
-    case 'UKR': case 'UK': case 'UKRAINIAN': return 'Ukrainian';
-    case 'UND': return 'Unknown';
+    case 'ENG':
+    case 'EN':
+    case 'ENGLISH':
+      return 'English';
+    case 'ITA':
+    case 'IT':
+    case 'ITALIAN':
+      return 'Italian';
+    case 'FRA':
+    case 'FRE':
+    case 'FR':
+    case 'FRENCH':
+      return 'French';
+    case 'GER':
+    case 'DEU':
+    case 'DE':
+    case 'GERMAN':
+      return 'German';
+    case 'SPA':
+    case 'ES':
+    case 'SPANISH':
+      return 'Spanish';
+    case 'JPN':
+    case 'JA':
+    case 'JAPANESE':
+      return 'Japanese';
+    case 'KOR':
+    case 'KO':
+    case 'KOREAN':
+      return 'Korean';
+    case 'CHI':
+    case 'ZHO':
+    case 'ZH':
+    case 'CHINESE':
+      return 'Chinese';
+    case 'RUS':
+    case 'RU':
+    case 'RUSSIAN':
+      return 'Russian';
+    case 'HIN':
+    case 'HI':
+    case 'HINDI':
+      return 'Hindi';
+    case 'POR':
+    case 'PT':
+    case 'PORTUGUESE':
+    case 'POB':
+    case 'PBR':
+      return 'Portuguese';
+    case 'ARA':
+    case 'AR':
+    case 'ARABIC':
+      return 'Arabic';
+    case 'TUR':
+    case 'TR':
+    case 'TURKISH':
+      return 'Turkish';
+    case 'POL':
+    case 'PL':
+    case 'POLISH':
+      return 'Polish';
+    case 'NLD':
+    case 'DUT':
+    case 'NL':
+    case 'DUTCH':
+      return 'Dutch';
+    case 'SWE':
+    case 'SV':
+    case 'SWEDISH':
+      return 'Swedish';
+    case 'NOR':
+    case 'NO':
+    case 'NORWEGIAN':
+      return 'Norwegian';
+    case 'DAN':
+    case 'DA':
+    case 'DANISH':
+      return 'Danish';
+    case 'FIN':
+    case 'FI':
+    case 'FINNISH':
+      return 'Finnish';
+    case 'GRE':
+    case 'ELL':
+    case 'EL':
+    case 'GREEK':
+      return 'Greek';
+    case 'HUN':
+    case 'HU':
+    case 'HUNGARIAN':
+      return 'Hungarian';
+    case 'CES':
+    case 'CZE':
+    case 'CS':
+    case 'CZECH':
+      return 'Czech';
+    case 'RON':
+    case 'RUM':
+    case 'RO':
+    case 'ROMANIAN':
+      return 'Romanian';
+    case 'HEB':
+    case 'HE':
+    case 'HEBREW':
+      return 'Hebrew';
+    case 'VIE':
+    case 'VI':
+    case 'VIETNAMESE':
+      return 'Vietnamese';
+    case 'IND':
+    case 'ID':
+    case 'INDONESIAN':
+      return 'Indonesian';
+    case 'THA':
+    case 'TH':
+    case 'THAI':
+      return 'Thai';
+    case 'UKR':
+    case 'UK':
+    case 'UKRAINIAN':
+      return 'Ukrainian';
+    case 'UND':
+      return 'Unknown';
     default:
       if (cleanCode.length > 3) {
         return cleanCode[0] + cleanCode.substring(1).toLowerCase();
@@ -1897,7 +2314,11 @@ String _getLanguageName(String code) {
 class AudioTrackSelector extends StatelessWidget {
   final VideoPlayerController controller;
   final VoidCallback onActivity;
-  const AudioTrackSelector({super.key, required this.controller, required this.onActivity});
+  const AudioTrackSelector({
+    super.key,
+    required this.controller,
+    required this.onActivity,
+  });
 
   Widget _buildBadge(String text, {bool isLang = false}) {
     return Container(
@@ -1905,10 +2326,20 @@ class AudioTrackSelector extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isLang ? Colors.white.withOpacity(0.15) : Colors.transparent,
-        border: isLang ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+        border:
+            isLang
+                ? null
+                : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(text, style: TextStyle(color: isLang ? Colors.white : Colors.white70, fontSize: 11, fontWeight: isLang ? FontWeight.bold : FontWeight.normal)),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: isLang ? Colors.white : Colors.white70,
+          fontSize: 11,
+          fontWeight: isLang ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
     );
   }
 
@@ -1933,13 +2364,23 @@ class AudioTrackSelector extends StatelessWidget {
                 side: const BorderSide(color: Colors.white12, width: 1),
               ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+                constraints: const BoxConstraints(
+                  maxWidth: 600,
+                  maxHeight: 500,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Padding(
                       padding: EdgeInsets.all(16.0),
-                      child: Text('Audio Tracks', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'Audio Tracks',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const Divider(color: Colors.white24, height: 1),
                     Flexible(
@@ -1947,15 +2388,40 @@ class AudioTrackSelector extends StatelessWidget {
                         shrinkWrap: true,
                         itemCount: audioTracks.length + 1,
                         itemBuilder: (context, index) {
-                          final activeIds = controller.getActiveAudioTracks() ?? [];
-                          final activeId = activeIds.isNotEmpty ? activeIds.first : -1;
-                          
+                          final activeIds =
+                              controller.getActiveAudioTracks() ?? [];
+                          final activeId =
+                              activeIds.isNotEmpty ? activeIds.first : -1;
+
                           if (index == 0) {
-                            final isSelected = activeId == -1; // Fallback heuristic
+                            final isSelected =
+                                activeId == -1; // Fallback heuristic
                             return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                              title: Text('Auto', style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
-                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : null,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 8,
+                              ),
+                              title: Text(
+                                'Auto',
+                                style: TextStyle(
+                                  color:
+                                      isSelected
+                                          ? Colors.blueAccent
+                                          : Colors.white,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              trailing:
+                                  isSelected
+                                      ? const Icon(
+                                        Icons.check,
+                                        color: Colors.blueAccent,
+                                      )
+                                      : null,
                               onTap: () {
                                 controller.setAudioTracks([-1]);
                                 Navigator.pop(context);
@@ -1966,57 +2432,111 @@ class AudioTrackSelector extends StatelessWidget {
                           final track = audioTracks[index - 1];
                           final listPosition = index - 1;
                           final isSelected = listPosition == activeId;
-                          
+
                           final title = track.metadata['title'] ?? '';
-                          String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
-                          
+                          String rawLang =
+                              track.metadata['language']?.toUpperCase() ??
+                              'UND';
+
                           if (rawLang == 'UND' || rawLang.isEmpty) {
                             final upTitle = title.toUpperCase();
-                            if (upTitle.contains('ENG')) rawLang = 'ENG';
-                            else if (upTitle.contains('ITA')) rawLang = 'ITA';
-                            else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
-                            else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
-                            else if (upTitle.contains('SPA')) rawLang = 'SPA';
-                            else if (upTitle.contains('JPN')) rawLang = 'JPN';
-                            else if (upTitle.contains('KOR')) rawLang = 'KOR';
-                            else if (upTitle.contains('HIN')) rawLang = 'HIN';
+                            if (upTitle.contains('ENG'))
+                              rawLang = 'ENG';
+                            else if (upTitle.contains('ITA'))
+                              rawLang = 'ITA';
+                            else if (upTitle.contains('FRE') ||
+                                upTitle.contains('FRA'))
+                              rawLang = 'FRE';
+                            else if (upTitle.contains('GER') ||
+                                upTitle.contains('DEU'))
+                              rawLang = 'GER';
+                            else if (upTitle.contains('SPA'))
+                              rawLang = 'SPA';
+                            else if (upTitle.contains('JPN'))
+                              rawLang = 'JPN';
+                            else if (upTitle.contains('KOR'))
+                              rawLang = 'KOR';
+                            else if (upTitle.contains('HIN'))
+                              rawLang = 'HIN';
                           }
 
                           final lang = _getLanguageName(rawLang);
                           final channels = track.codec.channels;
                           String channelStr = '';
-                          if (channels == 2) channelStr = '2.0';
-                          else if (channels == 6) channelStr = '5.1';
-                          else if (channels == 8) channelStr = '7.1';
-                          else if (channels > 0) channelStr = '$channels ch';
+                          if (channels == 2)
+                            channelStr = '2.0';
+                          else if (channels == 6)
+                            channelStr = '5.1';
+                          else if (channels == 8)
+                            channelStr = '7.1';
+                          else if (channels > 0)
+                            channelStr = '$channels ch';
 
                           final codec = track.codec.codec.toUpperCase();
                           String badge = '';
-                          if (codec.contains('EAC3') || codec.contains('AC3')) badge = 'Dolby';
-                          else if (codec.contains('TRUEHD')) badge = 'TrueHD';
-                          else if (codec.contains('DTS')) badge = 'DTS';
-                          else badge = codec;
+                          if (codec.contains('EAC3') || codec.contains('AC3'))
+                            badge = 'Dolby';
+                          else if (codec.contains('TRUEHD'))
+                            badge = 'TrueHD';
+                          else if (codec.contains('DTS'))
+                            badge = 'DTS';
+                          else
+                            badge = codec;
 
-                          final bitRate = track.codec.bitRate > 0 ? '${(track.codec.bitRate / 1000).round()} kbps' : '';
-                          final sampleRate = track.codec.sampleRate > 0 ? '${(track.codec.sampleRate / 1000).toStringAsFixed(1)} kHz' : '';
-                          final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
+                          final bitRate =
+                              track.codec.bitRate > 0
+                                  ? '${(track.codec.bitRate / 1000).round()} kbps'
+                                  : '';
+                          final sampleRate =
+                              track.codec.sampleRate > 0
+                                  ? '${(track.codec.sampleRate / 1000).toStringAsFixed(1)} kHz'
+                                  : '';
+                          final mainTitle =
+                              title.isNotEmpty && title.toUpperCase() != lang
+                                  ? title
+                                  : 'Track ${track.index}';
 
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
                             title: Row(
                               children: [
                                 _buildBadge(lang, isLang: true),
                                 Expanded(
-                                  child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    mainTitle,
+                                    style: TextStyle(
+                                      color:
+                                          isSelected
+                                              ? Colors.blueAccent
+                                              : Colors.white,
+                                      fontWeight:
+                                          isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
+                                      fontSize: 15,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                                 const SizedBox(width: 16),
                                 if (bitRate.isNotEmpty) _buildBadge(bitRate),
-                                if (sampleRate.isNotEmpty) _buildBadge(sampleRate),
-                                if (channelStr.isNotEmpty) _buildBadge(channelStr),
+                                if (sampleRate.isNotEmpty)
+                                  _buildBadge(sampleRate),
+                                if (channelStr.isNotEmpty)
+                                  _buildBadge(channelStr),
                                 if (badge.isNotEmpty) _buildBadge(badge),
                               ],
                             ),
-                            trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
+                            trailing:
+                                isSelected
+                                    ? const Icon(
+                                      Icons.check,
+                                      color: Colors.blueAccent,
+                                    )
+                                    : const SizedBox(width: 24),
                             onTap: () {
                               controller.setAudioTracks([listPosition]);
                               Navigator.pop(context);
@@ -2060,10 +2580,20 @@ class SubtitleTrackSelector extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: isLang ? Colors.white.withOpacity(0.15) : Colors.transparent,
-        border: isLang ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+        border:
+            isLang
+                ? null
+                : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(text, style: TextStyle(color: isLang ? Colors.white : Colors.white70, fontSize: 11, fontWeight: isLang ? FontWeight.bold : FontWeight.normal)),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: isLang ? Colors.white : Colors.white70,
+          fontSize: 11,
+          fontWeight: isLang ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
     );
   }
 
@@ -2071,7 +2601,8 @@ class SubtitleTrackSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaInfo = controller.getMediaInfo();
     final subTracks = mediaInfo?.subtitle ?? [];
-    if (subTracks.isEmpty && externalSubtitles.isEmpty) return const SizedBox.shrink();
+    if (subTracks.isEmpty && externalSubtitles.isEmpty)
+      return const SizedBox.shrink();
 
     return _TvIconButton(
       icon: Icons.subtitles,
@@ -2088,29 +2619,66 @@ class SubtitleTrackSelector extends StatelessWidget {
                 side: const BorderSide(color: Colors.white12, width: 1),
               ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 600, maxHeight: 500),
+                constraints: const BoxConstraints(
+                  maxWidth: 600,
+                  maxHeight: 500,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Padding(
                       padding: EdgeInsets.all(16.0),
-                      child: Text('Subtitles', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'Subtitles',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const Divider(color: Colors.white24, height: 1),
                     Flexible(
                       child: ListView.builder(
                         shrinkWrap: true,
-                        itemCount: subTracks.length + externalSubtitles.length + 1,
+                        itemCount:
+                            subTracks.length + externalSubtitles.length + 1,
                         itemBuilder: (context, index) {
-                          final activeIds = controller.getActiveSubtitleTracks() ?? [];
-                          final activeId = activeIds.isNotEmpty ? activeIds.first : -1;
-                          
+                          final activeIds =
+                              controller.getActiveSubtitleTracks() ?? [];
+                          final activeId =
+                              activeIds.isNotEmpty ? activeIds.first : -1;
+
                           if (index == 0) {
-                            final isSelected = activeIds.isEmpty && activeExternalSubIndex == -1;
+                            final isSelected =
+                                activeIds.isEmpty &&
+                                activeExternalSubIndex == -1;
                             return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                              title: Text('Disabled', style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
-                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : null,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 8,
+                              ),
+                              title: Text(
+                                'Disabled',
+                                style: TextStyle(
+                                  color:
+                                      isSelected
+                                          ? Colors.blueAccent
+                                          : Colors.white,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              trailing:
+                                  isSelected
+                                      ? const Icon(
+                                        Icons.check,
+                                        color: Colors.blueAccent,
+                                      )
+                                      : null,
                               onTap: () {
                                 onDisableExternalSubtitle();
                                 controller.setSubtitleTracks([]);
@@ -2118,42 +2686,83 @@ class SubtitleTrackSelector extends StatelessWidget {
                               },
                             );
                           }
-                          
+
                           // Internal container tracks
                           if (index - 1 < subTracks.length) {
                             final track = subTracks[index - 1];
                             final listPosition = index - 1;
-                            final isSelected = listPosition == activeId && activeIds.isNotEmpty && activeExternalSubIndex == -1;
-                            
+                            final isSelected =
+                                listPosition == activeId &&
+                                activeIds.isNotEmpty &&
+                                activeExternalSubIndex == -1;
+
                             final title = track.metadata['title'] ?? '';
-                            String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
-                            
+                            String rawLang =
+                                track.metadata['language']?.toUpperCase() ??
+                                'UND';
+
                             if (rawLang == 'UND' || rawLang.isEmpty) {
                               final upTitle = title.toUpperCase();
-                              if (upTitle.contains('ENG')) rawLang = 'ENG';
-                              else if (upTitle.contains('ITA')) rawLang = 'ITA';
-                              else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
-                              else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
-                              else if (upTitle.contains('SPA')) rawLang = 'SPA';
-                              else if (upTitle.contains('JPN')) rawLang = 'JPN';
-                              else if (upTitle.contains('KOR')) rawLang = 'KOR';
-                              else if (upTitle.contains('HIN')) rawLang = 'HIN';
+                              if (upTitle.contains('ENG'))
+                                rawLang = 'ENG';
+                              else if (upTitle.contains('ITA'))
+                                rawLang = 'ITA';
+                              else if (upTitle.contains('FRE') ||
+                                  upTitle.contains('FRA'))
+                                rawLang = 'FRE';
+                              else if (upTitle.contains('GER') ||
+                                  upTitle.contains('DEU'))
+                                rawLang = 'GER';
+                              else if (upTitle.contains('SPA'))
+                                rawLang = 'SPA';
+                              else if (upTitle.contains('JPN'))
+                                rawLang = 'JPN';
+                              else if (upTitle.contains('KOR'))
+                                rawLang = 'KOR';
+                              else if (upTitle.contains('HIN'))
+                                rawLang = 'HIN';
                             }
 
                             final lang = _getLanguageName(rawLang);
-                            final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
-                            
+                            final mainTitle =
+                                title.isNotEmpty && title.toUpperCase() != lang
+                                    ? title
+                                    : 'Track ${track.index}';
+
                             return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 8,
+                              ),
                               title: Row(
                                 children: [
                                   _buildBadge(lang, isLang: true),
                                   Expanded(
-                                    child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                    child: Text(
+                                      mainTitle,
+                                      style: TextStyle(
+                                        color:
+                                            isSelected
+                                                ? Colors.blueAccent
+                                                : Colors.white,
+                                        fontWeight:
+                                            isSelected
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                        fontSize: 15,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                   ),
                                 ],
                               ),
-                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
+                              trailing:
+                                  isSelected
+                                      ? const Icon(
+                                        Icons.check,
+                                        color: Colors.blueAccent,
+                                      )
+                                      : const SizedBox(width: 24),
                               onTap: () {
                                 onDisableExternalSubtitle();
                                 controller.setSubtitleTracks([listPosition]);
@@ -2168,10 +2777,14 @@ class SubtitleTrackSelector extends StatelessWidget {
                           final isSelected = activeExternalSubIndex == extIndex;
 
                           final fullLang = _getLanguageName(extSub.language);
-                          final addonTitle = extSub.label.isNotEmpty ? extSub.label : 'Addon';
+                          final addonTitle =
+                              extSub.label.isNotEmpty ? extSub.label : 'Addon';
 
                           return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 8,
+                            ),
                             title: Row(
                               children: [
                                 _buildBadge(fullLang, isLang: true),
@@ -2179,8 +2792,14 @@ class SubtitleTrackSelector extends StatelessWidget {
                                   child: Text(
                                     addonTitle,
                                     style: TextStyle(
-                                      color: isSelected ? Colors.blueAccent : Colors.white,
-                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color:
+                                          isSelected
+                                              ? Colors.blueAccent
+                                              : Colors.white,
+                                      fontWeight:
+                                          isSelected
+                                              ? FontWeight.bold
+                                              : FontWeight.normal,
                                       fontSize: 15,
                                     ),
                                     overflow: TextOverflow.ellipsis,
@@ -2188,7 +2807,13 @@ class SubtitleTrackSelector extends StatelessWidget {
                                 ),
                               ],
                             ),
-                            trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
+                            trailing:
+                                isSelected
+                                    ? const Icon(
+                                      Icons.check,
+                                      color: Colors.blueAccent,
+                                    )
+                                    : const SizedBox(width: 24),
                             onTap: () {
                               onSelectExternalSubtitle(extIndex, extSub.url);
                               Navigator.pop(context);
@@ -2212,7 +2837,7 @@ class FullscreenButton extends StatelessWidget {
   final VoidCallback onActivity;
   final bool isFullscreen;
   final VoidCallback onToggle;
-  
+
   const FullscreenButton({
     super.key,
     required this.onActivity,
