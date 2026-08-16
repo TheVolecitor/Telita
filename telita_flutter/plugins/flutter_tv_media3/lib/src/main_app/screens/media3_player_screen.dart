@@ -593,10 +593,28 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     setState(() {
       _isFullscreen = !_isFullscreen;
     });
-    if (_isFullscreen) {
-      acrylic.Window.enterFullscreen();
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (_isFullscreen) {
+        acrylic.Window.enterFullscreen();
+      } else {
+        acrylic.Window.exitFullscreen();
+      }
     } else {
-      acrylic.Window.exitFullscreen();
+      if (_isFullscreen) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.landscapeRight,
+          DeviceOrientation.landscapeLeft,
+        ]);
+      } else {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeRight,
+          DeviceOrientation.landscapeLeft,
+        ]);
+      }
     }
   }
 
@@ -695,7 +713,13 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
             // Video fills the entire space with no built-in controls overlay.
             Positioned.fill(
               child: GestureDetector(
-                onTap: _togglePlay,
+                onTap: () {
+                  if (_controlsVisible) {
+                    setState(() => _controlsVisible = false);
+                  } else {
+                    _onMouseActivity();
+                  }
+                },
                 onDoubleTap: _toggleFullscreen,
                 child: RepaintBoundary(
                   child: _isInitialized
