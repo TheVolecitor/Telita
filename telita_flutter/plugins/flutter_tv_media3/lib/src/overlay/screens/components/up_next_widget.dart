@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../entity/playback_state.dart';
-import '../../../entity/media_segment.dart';
 import '../../media_ui_service/media3_ui_controller.dart';
-import 'package:flutter_tv_media3/src/app_theme/app_theme.dart';
 
-class SkipSegmentWidget extends StatefulWidget {
+class UpNextWidget extends StatefulWidget {
   final Media3UiController controller;
-  const SkipSegmentWidget({super.key, required this.controller});
+  const UpNextWidget({super.key, required this.controller});
 
   @override
-  State<SkipSegmentWidget> createState() => _SkipSegmentWidgetState();
+  State<UpNextWidget> createState() => _UpNextWidgetState();
 }
 
-class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
+class _UpNextWidgetState extends State<UpNextWidget> {
   bool _isFocused = false;
 
   @override
@@ -32,28 +30,16 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
         }
 
         final playItem = playlist[playerState.playIndex];
-        final segments = playItem.segments;
+        if (!playItem.hasNextEpisode) return const SizedBox.shrink();
 
         final currentSecs = playback.position;
         final remaining = playback.duration - currentSecs;
-        bool isNextEpisode = playItem.hasNextEpisode && playback.duration > 0 && remaining <= 10 && remaining >= 0;
         
-        MediaSegment? active;
-        if (!isNextEpisode && segments != null && segments.isNotEmpty) {
-          for (final seg in segments) {
-            final start = seg.startSec ?? 0;
-            if (currentSecs >= start && currentSecs < seg.endSec) {
-              active = seg;
-              break;
-            }
-          }
-        }
-
-        if (active == null && !isNextEpisode) {
-          return const SizedBox.shrink();
-        }
+        // Show in the final 10 seconds
+        if (remaining > 10 || remaining < 0) return const SizedBox.shrink();
 
         final percentage = remaining / 10.0; // 1.0 down to 0.0
+
         final seasonStr = playItem.nextEpisodeSeason?.toString();
         final epStr = playItem.nextEpisodeNumber?.toString();
         String sxe = "";
@@ -61,20 +47,10 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
           sxe = "S${seasonStr}E${epStr}";
         }
 
-        final label = isNextEpisode 
-            ? 'Next Episode'
-            : active!.type.toLowerCase() == 'intro' 
-            ? 'Skip Intro' 
-            : active.type.toLowerCase() == 'recap' 
-                ? 'Skip Recap' 
-                : active.type.toLowerCase() == 'credits'
-                    ? 'Skip Credits'
-                    : 'Skip ${active.type}';
-
         return Align(
           alignment: Alignment.bottomRight,
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 120.0, right: 32.0), // Above timeline
+            padding: const EdgeInsets.only(bottom: 120.0, right: 32.0),
             child: Focus(
               onFocusChange: (focused) => setState(() => _isFocused = focused),
               onKeyEvent: (node, event) {
@@ -82,24 +58,16 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                    (event.logicalKey == LogicalKeyboardKey.select || 
                     event.logicalKey == LogicalKeyboardKey.enter || 
                     event.logicalKey == LogicalKeyboardKey.space)) {
-                  if (isNextEpisode) {
-                    playItem.onNextEpisode?.call();
-                  } else {
-                    widget.controller.seekTo(positionSeconds: active!.endSec);
-                  }
+                  playItem.onNextEpisode?.call();
                   return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
               },
               child: InkWell(
                 onTap: () {
-                  if (isNextEpisode) {
-                    playItem.onNextEpisode?.call();
-                  } else {
-                    widget.controller.seekTo(positionSeconds: active!.endSec);
-                  }
+                  playItem.onNextEpisode?.call();
                 },
-                child: isNextEpisode ? Container(
+                child: Container(
                   width: 320,
                   height: 140,
                   decoration: BoxDecoration(
@@ -123,6 +91,7 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                     borderRadius: BorderRadius.circular(10),
                     child: Stack(
                       children: [
+                        // Background image
                         if (playItem.nextEpisodeThumbnail != null && playItem.nextEpisodeThumbnail!.isNotEmpty)
                           Positioned.fill(
                             child: Image.network(
@@ -131,6 +100,7 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                               errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                             ),
                           ),
+                        // Dark gradient overlay to make text readable
                         Positioned.fill(
                           child: Container(
                             decoration: BoxDecoration(
@@ -145,6 +115,7 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                             ),
                           ),
                         ),
+                        // Content
                         Padding(
                           padding: const EdgeInsets.all(16.0),
                           child: Column(
@@ -187,10 +158,11 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: 4), // Space for progress bar
                             ],
                           ),
                         ),
+                        // Progress bar at the bottom
                         Positioned(
                           bottom: 0,
                           left: 0,
@@ -204,6 +176,7 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                             ),
                           ),
                         ),
+                        // Countdown text
                         Positioned(
                           top: 12,
                           right: 12,
@@ -226,35 +199,6 @@ class _SkipSegmentWidgetState extends State<SkipSegmentWidget> {
                         ),
                       ],
                     ),
-                  ),
-                ) : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: _isFocused ? AppTheme.fullFocusColor : Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _isFocused ? Colors.white : Colors.white30,
-                      width: 2,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: _isFocused ? Colors.black : Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.fast_forward,
-                        color: _isFocused ? Colors.black : Colors.white,
-                        size: 24,
-                      ),
-                    ],
                   ),
                 ),
               ),

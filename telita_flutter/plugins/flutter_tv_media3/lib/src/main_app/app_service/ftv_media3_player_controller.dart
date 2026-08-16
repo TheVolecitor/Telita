@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
+import 'package:fvp/fvp.dart';
 import 'package:fvp/fvp.dart' as fvp;
 import 'package:flutter_acrylic/flutter_acrylic.dart';
 import '../../../flutter_tv_media3.dart';
@@ -860,7 +861,7 @@ class FtvMedia3PlayerController {
     Widget? placeholderWidget,
   }) async {
     OverlayLocalizations.load(_localeStrings);
-    Navigator.push(
+    await Navigator.push(
       context,
       PageRouteBuilder(
         opaque: true,
@@ -878,7 +879,7 @@ class FtvMedia3PlayerController {
 
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
       if (_videoPlayerController != null) {
         await _videoPlayerController!.dispose();
         _videoPlayerController = null;
@@ -920,18 +921,25 @@ class FtvMedia3PlayerController {
       screenshotsEnable: _onScreenshotTaken != null,
     );
 
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
       if (_videoPlayerController != null) {
         await _videoPlayerController!.dispose();
       }
       
-      // Register fvp with hardware decoder fallbacks and force seekable HTTP for WebDAV/NNTP duration parsing
+      final subList = playlist[initialIndex].subtitles;
+      String? subFilesStr;
+      if (subList != null && subList.isNotEmpty) {
+        subFilesStr = subList.map((s) => s.url).join(';');
+      }
+
+      // Register fvp with hardware decoder fallbacks, seekable HTTP, and external subtitle files
       fvp.registerWith(options: {
-        'video.decoders': ['D3D11', 'DXVA', 'CUDA', 'FFmpeg'],
+        'video.decoders': ['D3D11', 'DXVA', 'CUDA', 'mediacodec', 'mediacodec-copy', 'FFmpeg'],
         'player': {
           'avformat.seekable': '1',
           'avio.seekable': '1',
           'avformat.fflags': '+fastseek',
+          if (subFilesStr != null && subFilesStr.isNotEmpty) 'sub-files': subFilesStr,
         },
       });
 
@@ -1113,7 +1121,7 @@ class FtvMedia3PlayerController {
 
   /// Toggles the player between play and pause states.
   Future<void> playPause() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
       _videoPlayerController!.value.isPlaying 
           ? await _videoPlayerController!.pause() 
           : await _videoPlayerController!.play();
@@ -1124,7 +1132,7 @@ class FtvMedia3PlayerController {
 
   /// Starts or resumes playback.
   Future<void> play() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
       await _videoPlayerController!.play();
       return;
     }
@@ -1133,7 +1141,7 @@ class FtvMedia3PlayerController {
 
   /// Pauses playback.
   Future<void> pause() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
       await _videoPlayerController!.pause();
       return;
     }
@@ -1144,7 +1152,7 @@ class FtvMedia3PlayerController {
   ///
   /// [positionSeconds] The position to seek to, in seconds.
   Future<void> seekTo({required int positionSeconds}) async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
       await _videoPlayerController!.seekTo(Duration(seconds: positionSeconds));
       return;
     }
@@ -1261,7 +1269,7 @@ class FtvMedia3PlayerController {
 
   /// Stops playback and releases player resources.
   Future<void> stop() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS) && _videoPlayerController != null) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
       if (_playbackState.position != null && _playbackState.duration != null) {
         // Sync watch history before disposing
         await _handleMethodCall(MethodCall('onWatchTimeMarked', {

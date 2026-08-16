@@ -266,13 +266,22 @@ class AuthService extends ValueNotifier<AuthState> {
 
   Future<Map<String, dynamic>> getDeviceCode() async {
     try {
+      debugPrint('[AuthService] Fetching device code from: $defaultApiUrl/api/auth/device/code');
       final res = await http.post(
         Uri.parse('$defaultApiUrl/api/auth/device/code'),
         headers: {'Content-Type': 'application/json'},
       );
-      return jsonDecode(res.body);
-    } catch (e) {
-      return {'error': 'Network error. Please try again.'};
+      debugPrint('[AuthService] getDeviceCode status: ${res.statusCode}, body: ${res.body}');
+      final data = jsonDecode(res.body);
+      if (res.statusCode == 200) {
+        debugPrint('[AuthService] Successfully fetched device code: ${data['user_code']} (device_code: ${data['device_code']})');
+      } else {
+        debugPrint('[AuthService] Failed to fetch device code. Error: ${data['error'] ?? data}');
+      }
+      return data;
+    } catch (e, stack) {
+      debugPrint('[AuthService] Exception in getDeviceCode: $e\n$stack');
+      return {'error': 'Network error: $e'};
     }
   }
 
@@ -285,11 +294,17 @@ class AuthService extends ValueNotifier<AuthState> {
       );
       final data = jsonDecode(res.body);
       if (res.statusCode == 200) {
+        debugPrint('[AuthService] Device code approved! Token successfully acquired.');
         await _applyLoginResponse(data);
         return {'success': true};
+      } else {
+        if (data['error'] != 'authorization_pending') {
+          debugPrint('[AuthService] Poll device token response: status ${res.statusCode}, data: $data');
+        }
       }
       return data;
     } catch (e) {
+      debugPrint('[AuthService] Exception polling device token: $e');
       return {'error': 'Network error'};
     }
   }

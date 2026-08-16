@@ -132,7 +132,7 @@ class _CatalogSettingsScreenState extends State<CatalogSettingsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: const Color(0xFF202020),
+            backgroundColor: Theme.of(context).colorScheme.surface,
             title: const Text('Set Item Limit', style: TextStyle(color: Colors.white)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -180,7 +180,7 @@ class _CatalogSettingsScreenState extends State<CatalogSettingsScreen> {
     final accentColor = Theme.of(context).colorScheme.secondary;
     
     return Scaffold(
-      backgroundColor: const Color(0xFF101010),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Discover Page'),
         backgroundColor: Colors.transparent,
@@ -240,7 +240,7 @@ class _CatalogSettingsScreenState extends State<CatalogSettingsScreen> {
                   },
                   child: Card(
                     elevation: isReordering ? 8 : 1,
-                    color: isReordering ? accentColor.withOpacity(0.2) : const Color(0xFF1A1A1A),
+                    color: isReordering ? accentColor.withOpacity(0.2) : Theme.of(context).colorScheme.surface,
                     margin: const EdgeInsets.only(bottom: 8.0),
                     child: ListTile(
                       onLongPress: () {

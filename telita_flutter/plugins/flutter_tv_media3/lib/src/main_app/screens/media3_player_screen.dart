@@ -11,7 +11,48 @@ import 'package:video_player/video_player.dart';
 import 'package:fvp/fvp.dart';
 import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
 import 'package:lottie/lottie.dart';
+import 'package:http/http.dart' as http;
 import '../../overlay/screens/components/widgets/brand_loading_indicator.dart';
+
+class _AppCaption {
+  final Duration start;
+  final Duration end;
+  final String text;
+
+  _AppCaption({required this.start, required this.end, required this.text});
+}
+
+List<_AppCaption> _parseSrtOrVtt(String content) {
+  final List<_AppCaption> captions = [];
+  final blocks = content.replaceAll('\r\n', '\n').split(RegExp(r'\n\s*\n'));
+  for (final block in blocks) {
+    final lines = block.trim().split('\n');
+    for (int i = 0; i < lines.length; i++) {
+      final timeMatch = RegExp(r'(\d+):(\d+):(\d+)[,\.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,\.](\d+)').firstMatch(lines[i]);
+      if (timeMatch != null && i + 1 < lines.length) {
+        final start = Duration(
+          hours: int.parse(timeMatch[1]!),
+          minutes: int.parse(timeMatch[2]!),
+          seconds: int.parse(timeMatch[3]!),
+          milliseconds: int.parse(timeMatch[4]!),
+        );
+        final end = Duration(
+          hours: int.parse(timeMatch[5]!),
+          minutes: int.parse(timeMatch[6]!),
+          seconds: int.parse(timeMatch[7]!),
+          milliseconds: int.parse(timeMatch[8]!),
+        );
+        final textLines = lines.sublist(i + 1).where((l) => !RegExp(r'^\d+$').hasMatch(l)).toList();
+        final text = textLines.join('\n').replaceAll(RegExp(r'<[^>]*>'), '').trim();
+        if (text.isNotEmpty) {
+          captions.add(_AppCaption(start: start, end: end, text: text));
+        }
+        break;
+      }
+    }
+  }
+  return captions;
+}
 
 /// A screen widget launched from the main application to display the loading
 /// process of the native player.
@@ -56,7 +97,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
       _loadingTimeoutTimer = Timer(const Duration(seconds: 30), () {
         if (mounted && FtvMedia3PlayerController().videoPlayerController == null) {
           setState(() => _loadingTimedOut = true);
@@ -64,11 +105,11 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (!(Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
       try {
-        if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+        if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
           _overlayController = Media3UiController();
           _overlayController!.initForWindows(widget.playlist, widget.initialIndex);
           setState(() {});
@@ -80,7 +121,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       } catch (e) {
         if (mounted) {
           _showErrorSnackBar(context, e.toString());
-          if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
             setState(() => _loadingTimedOut = true);
           }
         }
@@ -105,7 +146,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (state == AppLifecycleState.paused && mounted && !isClose && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
       isClose = true;
       Navigator.of(context).maybePop();
     }
@@ -135,7 +176,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   Widget build(BuildContext context) {
     // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
     // We just need a black background behind it while it loads.
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
       final controller = FtvMedia3PlayerController().videoPlayerController;
       if (controller == null) {
         return Scaffold(
@@ -278,10 +319,45 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   bool _isInitialized = false;
   bool _isFullscreen = false;
   bool _defaultAudioSelected = false;
+  bool _wasPlaying = false;
+  bool _videoCompleted = false;
+  late final FocusNode _rootFocusNode;
+  late final FocusNode _playButtonFocusNode;
+
+  List<_AppCaption> _externalCaptions = [];
+  int _activeExternalSubIndex = -1;
+
+  Future<void> _loadExternalSubtitle(int index, String url) async {
+    setState(() {
+      _activeExternalSubIndex = index;
+      _externalCaptions = [];
+    });
+    try { widget.controller.setSubtitleTracks([]); } catch (_) {}
+    
+    try {
+      final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
+      if (res.statusCode == 200 && mounted) {
+        final parsed = _parseSrtOrVtt(res.body);
+        setState(() {
+          _externalCaptions = parsed;
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _disableExternalSubtitle() {
+    setState(() {
+      _activeExternalSubIndex = -1;
+      _externalCaptions = [];
+    });
+    try { widget.controller.setSubtitleTracks([]); } catch (_) {}
+  }
 
   @override
   void initState() {
     super.initState();
+    _rootFocusNode = FocusNode();
+    _playButtonFocusNode = FocusNode();
     _isInitialized = widget.controller.value.isInitialized;
     widget.controller.addListener(_checkInit);
     _subtitleStyle = widget.overlayController?.playerState.subtitleStyle;
@@ -317,12 +393,46 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   }
 
   void _checkInit() {
-    if (mounted && widget.controller.value.isInitialized != _isInitialized) {
-      setState(() => _isInitialized = widget.controller.value.isInitialized);
+    if (mounted) {
+      if (widget.controller.value.isInitialized != _isInitialized) {
+        setState(() => _isInitialized = widget.controller.value.isInitialized);
 
-      if (_isInitialized && !_defaultAudioSelected) {
-        _defaultAudioSelected = true;
-        _selectDefaultAudioTrack();
+        if (_isInitialized && !_defaultAudioSelected) {
+          _defaultAudioSelected = true;
+          _selectDefaultAudioTrack();
+          _selectDefaultSubtitleTrack();
+          // Resume from saved watch position
+          final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
+              ? widget.playlist[widget.initialIndex]
+              : null;
+          final start = item?.startPosition;
+          if (start != null && start > 5) {
+            // Small delay so fvp has fully buffered enough to accept a seek
+            Future.delayed(const Duration(milliseconds: 800), () {
+              if (mounted) {
+                widget.controller.seekTo(Duration(seconds: start));
+              }
+            });
+          }
+        }
+      }
+
+      if (widget.controller.value.isPlaying != _wasPlaying) {
+        _wasPlaying = widget.controller.value.isPlaying;
+        _sendScrobbleEvent(_wasPlaying ? 'start' : 'pause');
+      }
+    }
+  }
+
+  void _sendScrobbleEvent(String action) {
+    if (widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length) {
+      final item = widget.playlist[widget.initialIndex];
+      if (item.onScrobble != null) {
+        final pos = widget.controller.value.position.inSeconds;
+        final dur = widget.controller.value.duration.inSeconds;
+        if (dur > 0) {
+          item.onScrobble!(action: action, position: pos, duration: dur);
+        }
       }
     }
   }
@@ -357,8 +467,90 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     });
   }
 
+  void _selectDefaultSubtitleTrack() {
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (!mounted) return;
+
+      final playerSettings = widget.overlayController?.playerState.playerSettings;
+      final subtitleEnabled = playerSettings?.forcedAutoEnable ?? true;
+
+      if (!subtitleEnabled) {
+        try { widget.controller.setSubtitleTracks([]); } catch (_) {}
+        _disableExternalSubtitle();
+        return;
+      }
+
+      final preferredLangs = playerSettings?.preferredTextLanguages ?? const ['eng'];
+      final prefLang = preferredLangs.isNotEmpty ? preferredLangs.first.toLowerCase() : 'eng';
+
+      // 1. PRIORITIZE IN-STREAM CONTAINER SUBTITLES FIRST
+      final mediaInfo = widget.controller.getMediaInfo();
+      final subTracks = mediaInfo?.subtitle ?? [];
+
+      int matchedInStreamIndex = -1;
+      for (int i = 0; i < subTracks.length; i++) {
+        final lang = (subTracks[i].metadata['language'] ?? '').toLowerCase();
+        final title = (subTracks[i].metadata['title'] ?? '').toLowerCase();
+
+        if (lang == prefLang ||
+            lang.startsWith(prefLang) ||
+            title.contains(prefLang) ||
+            (prefLang == 'eng' && (lang == 'en' || lang == 'english' || title.contains('eng')))) {
+          matchedInStreamIndex = i;
+          break;
+        }
+      }
+
+      if (matchedInStreamIndex != -1) {
+        _disableExternalSubtitle();
+        try {
+          widget.controller.setSubtitleTracks([matchedInStreamIndex]);
+        } catch (_) {}
+        return;
+      }
+
+      // 2. IF NO IN-STREAM SUBTITLE FOUND FOR PREFERRED LANG, CHECK EXTERNAL ADDON SUBTITLES
+      final item = widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
+          ? widget.playlist[widget.initialIndex]
+          : null;
+      final externalSubs = item?.subtitles ?? [];
+
+      if (externalSubs.isNotEmpty && _activeExternalSubIndex == -1) {
+        int matchedExtIndex = -1;
+        for (int i = 0; i < externalSubs.length; i++) {
+          final lang = externalSubs[i].language.toLowerCase();
+          if (lang == prefLang ||
+              lang.startsWith(prefLang) ||
+              (prefLang == 'eng' && (lang == 'en' || lang == 'english'))) {
+            matchedExtIndex = i;
+            break;
+          }
+        }
+
+        final targetIdx = matchedExtIndex != -1 ? matchedExtIndex : 0;
+        _loadExternalSubtitle(targetIdx, externalSubs[targetIdx].url);
+        return;
+      }
+
+      // 3. FALLBACK: IF NO MATCHING LANG IN-STREAM OR EXTERNAL, PICK FIRST AVAILABLE IN-STREAM TRACK
+      if (subTracks.isNotEmpty) {
+        _disableExternalSubtitle();
+        try {
+          widget.controller.setSubtitleTracks([0]);
+        } catch (_) {}
+      }
+    });
+  }
+
   @override
   void dispose() {
+    if (_isFullscreen) {
+      acrylic.Window.exitFullscreen();
+      _isFullscreen = false;
+    }
+    _rootFocusNode.dispose();
+    _playButtonFocusNode.dispose();
+    _sendScrobbleEvent('stop');
     _syncWatchHistory();
     widget.controller.removeListener(_checkInit);
     _hideTimer?.cancel();
@@ -385,6 +577,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     _hideTimer = Timer(_hideAfter, () {
       if (mounted) {
         setState(() => _controlsVisible = false);
+        _rootFocusNode.requestFocus();
         _unmountTimer = Timer(const Duration(milliseconds: 250), () {
           if (mounted) setState(() => _controlsMounted = false);
         });
@@ -412,32 +605,72 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     widget.controller.seekTo(next.isNegative ? Duration.zero : next);
   }
 
-  KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
       return KeyEventResult.ignored;
     }
     _onMouseActivity();
+
+    // hasPrimaryFocus = ONLY this exact node is focused (no child button is focused).
+    // If a child button has focus, hasPrimaryFocus is false — let Flutter traversal
+    // and the child's own onKeyEvent handle the event.
+    if (!node.hasPrimaryFocus) {
+      // Only intercept global Back/Escape — everything else propagates to the focused child.
+      if (event.logicalKey == LogicalKeyboardKey.escape ||
+          event.logicalKey == LogicalKeyboardKey.goBack) {
+        if (_isFullscreen) {
+          _toggleFullscreen();
+        } else {
+          widget.onBack();
+        }
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    }
+
+    // Root has primary focus — player surface is in control.
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
+      case LogicalKeyboardKey.select:
+      case LogicalKeyboardKey.enter:
+      case LogicalKeyboardKey.gameButtonA:
         _togglePlay();
         return KeyEventResult.handled;
-      case LogicalKeyboardKey.keyF:
-        _toggleFullscreen();
-        return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowRight:
-        _seek(const Duration(seconds: 10));
+        if (_controlsVisible) {
+          // Controls visible: move focus rightward in controls
+          FocusScope.of(context).focusInDirection(TraversalDirection.right);
+        } else {
+          _seek(const Duration(seconds: 10));
+        }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowLeft:
-        _seek(const Duration(seconds: -10));
-        return KeyEventResult.handled;
-      case LogicalKeyboardKey.arrowUp:
-        widget.controller.setVolume((widget.controller.value.volume + 0.05).clamp(0.0, 1.0));
+        if (_controlsVisible) {
+          FocusScope.of(context).focusInDirection(TraversalDirection.left);
+        } else {
+          _seek(const Duration(seconds: -10));
+        }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowDown:
-        widget.controller.setVolume((widget.controller.value.volume - 0.05).clamp(0.0, 1.0));
+        // Move focus down into the controls bar (play button).
+        if (_controlsVisible && _controlsMounted) {
+          _playButtonFocusNode.requestFocus();
+        } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          widget.controller.setVolume((widget.controller.value.volume - 0.05).clamp(0.0, 1.0));
+        }
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.arrowUp:
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          widget.controller.setVolume((widget.controller.value.volume + 0.05).clamp(0.0, 1.0));
+        }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.escape:
-        widget.onBack();
+      case LogicalKeyboardKey.goBack:
+        if (_isFullscreen) {
+          _toggleFullscreen();
+        } else {
+          widget.onBack();
+        }
         return KeyEventResult.handled;
       default:
         return KeyEventResult.ignored;
@@ -453,6 +686,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       onHover: (_) => _onMouseActivity(),
       onEnter: (_) => _onMouseActivity(),
       child: Focus(
+        focusNode: _rootFocusNode,
         autofocus: true,
         onKeyEvent: _handleKey,
         child: Stack(
@@ -462,6 +696,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
             Positioned.fill(
               child: GestureDetector(
                 onTap: _togglePlay,
+                onDoubleTap: _toggleFullscreen,
                 child: RepaintBoundary(
                   child: _isInitialized
                       ? Center(
@@ -589,6 +824,108 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               },
             ),
 
+            // Vector Native Subtitle Overlay
+            if (_activeExternalSubIndex != -1 && _externalCaptions.isNotEmpty)
+              ValueListenableBuilder<VideoPlayerValue>(
+                valueListenable: widget.controller,
+                builder: (context, val, _) {
+                  if (!val.isInitialized) return const SizedBox.shrink();
+                  final pos = val.position;
+                  String captionText = '';
+                  for (final cap in _externalCaptions) {
+                    if (pos >= cap.start && pos <= cap.end) {
+                      captionText = cap.text;
+                      break;
+                    }
+                  }
+                  if (captionText.isEmpty) return const SizedBox.shrink();
+
+                  final style = _subtitleStyle ?? SubtitleStyle();
+                  final fgColor = style.foregroundColor?.color ?? Colors.white;
+                  final bgColor = style.backgroundColor?.color ?? Colors.transparent;
+                  final winColor = style.windowColor?.color ?? Colors.transparent;
+
+                  final fontSizeMultiplier = style.textSizeFraction ?? 1.0;
+                  final baseFontSize = 32.0 * fontSizeMultiplier;
+
+                  final bottomPad = (style.bottomPadding?.toDouble() ?? 0.0) + (_controlsVisible ? 110.0 : 48.0);
+                  final leftPad = (style.leftPadding?.toDouble() ?? 0.0) + 48.0;
+                  final rightPad = (style.rightPadding?.toDouble() ?? 0.0) + 48.0;
+
+                  List<Shadow>? textShadows;
+                  if (style.edgeType == SubtitleEdgeType.dropShadow) {
+                    textShadows = [
+                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, -1)),
+                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, -1)),
+                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, 1)),
+                      Shadow(blurRadius: 0, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, 1)),
+                      Shadow(blurRadius: 4, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(2, 2)),
+                    ];
+                  } else if (style.edgeType == SubtitleEdgeType.outline) {
+                    final edgeCol = style.edgeColor?.color ?? Colors.black;
+                    textShadows = [
+                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(-1, -1)),
+                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(1, -1)),
+                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(1, 1)),
+                      Shadow(blurRadius: 0, color: edgeCol, offset: const Offset(-1, 1)),
+                    ];
+                  } else if (style.edgeType == SubtitleEdgeType.raised) {
+                    textShadows = [
+                      Shadow(blurRadius: 2, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(-1, -1)),
+                    ];
+                  } else if (style.edgeType == SubtitleEdgeType.depressed) {
+                    textShadows = [
+                      Shadow(blurRadius: 2, color: style.edgeColor?.color ?? Colors.black, offset: const Offset(1, 1)),
+                    ];
+                  } else {
+                    // Thin black boundary outline + soft drop shadow
+                    textShadows = const [
+                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(-1, -1)),
+                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(1, -1)),
+                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(1, 1)),
+                      Shadow(blurRadius: 0, color: Colors.black, offset: Offset(-1, 1)),
+                      Shadow(blurRadius: 3, color: Colors.black54, offset: Offset(1.5, 1.5)),
+                    ];
+                  }
+
+                  final Color containerColor = (winColor != Colors.transparent && winColor.alpha > 0)
+                      ? winColor
+                      : (bgColor != Colors.transparent && bgColor.alpha > 0)
+                          ? bgColor
+                          : Colors.transparent;
+
+                  return Positioned(
+                    bottom: bottomPad,
+                    left: leftPad,
+                    right: rightPad,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: containerColor,
+                            borderRadius: containerColor != Colors.transparent ? BorderRadius.circular(8) : null,
+                          ),
+                          child: Text(
+                            captionText,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Arial',
+                              fontFamilyFallback: const ['Roboto', 'Segoe UI', 'sans-serif'],
+                              color: fgColor,
+                              fontSize: baseFontSize,
+                              fontWeight: FontWeight.w500,
+                              height: 1.25,
+                              shadows: textShadows,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+
             // Controls overlay — fades in/out on mouse activity.
             if (_controlsMounted)
               RepaintBoundary(
@@ -603,13 +940,21 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     onActivity: _onMouseActivity,
                     isFullscreen: _isFullscreen,
                     onToggleFullscreen: _toggleFullscreen,
+                    playButtonFocusNode: _playButtonFocusNode,
+                    onBackToPlayer: () => _rootFocusNode.requestFocus(),
+                    externalSubtitles: (widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length)
+                        ? (widget.playlist[widget.initialIndex].subtitles ?? const [])
+                        : const [],
+                    activeExternalSubIndex: _activeExternalSubIndex,
+                    onSelectExternalSubtitle: (idx, url) => _loadExternalSubtitle(idx, url),
+                    onDisableExternalSubtitle: _disableExternalSubtitle,
                   ),
                 ),
               ),
             _WindowsSkipSegmentOverlay(
               controller: widget.controller,
-              segments: widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
-                  ? widget.playlist[widget.initialIndex].segments
+              playItem: widget.playlist.isNotEmpty && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length
+                  ? widget.playlist[widget.initialIndex]
                   : null,
             ),
           ],
@@ -621,11 +966,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
 class _WindowsSkipSegmentOverlay extends StatefulWidget {
   final VideoPlayerController controller;
-  final List<MediaSegment>? segments;
+  final PlaylistMediaItem? playItem;
 
   const _WindowsSkipSegmentOverlay({
     required this.controller,
-    required this.segments,
+    required this.playItem,
   });
 
   @override
@@ -634,12 +979,12 @@ class _WindowsSkipSegmentOverlay extends StatefulWidget {
 
 class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> {
   bool _isFocused = false;
+  bool _hasAutoAdvanced = false;
 
   @override
   Widget build(BuildContext context) {
-    if (widget.segments == null || widget.segments!.isEmpty) {
-      return const SizedBox.shrink();
-    }
+    final playItem = widget.playItem;
+    if (playItem == null) return const SizedBox.shrink();
 
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: widget.controller,
@@ -648,21 +993,202 @@ class _WindowsSkipSegmentOverlayState extends State<_WindowsSkipSegmentOverlay> 
           return const SizedBox.shrink();
         }
 
-        final currentSecs = value.position.inSeconds;
+        final currentMs = value.position.inMilliseconds;
+        final durationMs = value.duration.inMilliseconds;
+        final currentSecs = currentMs ~/ 1000;
+        final remainingMs = durationMs - currentMs;
+        final double remainingSecs = remainingMs / 1000.0;
+        final bool isNextEpisode = playItem.hasNextEpisode && durationMs > 0 && remainingSecs <= 10.0 && remainingSecs >= 0.0;
+
+        // Auto-advance: when video naturally ends, trigger next episode
+        if (!_hasAutoAdvanced && playItem.hasNextEpisode && durationMs > 0 && remainingMs <= 0) {
+          _hasAutoAdvanced = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              widget.controller.pause();
+              playItem.onNextEpisode?.call();
+            }
+          });
+        }
+
         MediaSegment? active;
-        for (final seg in widget.segments!) {
-          final start = seg.startSec ?? 0;
-          if (currentSecs >= start && currentSecs < seg.endSec) {
-            active = seg;
-            break;
+        if (!isNextEpisode && playItem.segments != null && playItem.segments!.isNotEmpty) {
+          for (final seg in playItem.segments!) {
+            final start = seg.startSec ?? 0;
+            if (currentSecs >= start && currentSecs < seg.endSec) {
+              active = seg;
+              break;
+            }
           }
         }
 
-        if (active == null) {
+        if (active == null && !isNextEpisode) {
           return const SizedBox.shrink();
         }
 
-        final label = active.type.toLowerCase() == 'intro'
+        // --- UpNext Card ---
+        if (isNextEpisode) {
+          final double progress = (1.0 - (remainingMs / 10000.0)).clamp(0.0, 1.0);
+          final seasonStr = playItem.nextEpisodeSeason?.toString();
+          final epStr = playItem.nextEpisodeNumber?.toString();
+          String sxe = "";
+          if (seasonStr != null && epStr != null) {
+            sxe = "S${seasonStr}E${epStr}";
+          }
+
+          return Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 110.0, right: 32.0),
+              child: MouseRegion(
+                onEnter: (_) => setState(() => _isFocused = true),
+                onExit: (_) => setState(() => _isFocused = false),
+                child: GestureDetector(
+                  onTap: () {
+                    widget.controller.pause();
+                    playItem.onNextEpisode?.call();
+                  },
+                  child: Container(
+                    width: 320,
+                    height: 140,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.85),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _isFocused ? Colors.white : Colors.white24,
+                        width: _isFocused ? 3 : 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.6),
+                          blurRadius: 12,
+                          spreadRadius: 2,
+                        ),
+                        if (_isFocused)
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.15),
+                            blurRadius: 12,
+                            spreadRadius: 2,
+                          ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(
+                        children: [
+                          if (playItem.nextEpisodeThumbnail != null && playItem.nextEpisodeThumbnail!.isNotEmpty)
+                            Positioned.fill(
+                              child: Image.network(
+                                playItem.nextEpisodeThumbnail!,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                              ),
+                            ),
+                          Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.black.withOpacity(0.4),
+                                    Colors.black.withOpacity(0.85),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.skip_next, color: Colors.white70, size: 16),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'UP NEXT',
+                                      style: TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const Spacer(),
+                                if (sxe.isNotEmpty)
+                                  Text(
+                                    sxe,
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                const SizedBox(height: 2),
+                                if (playItem.nextEpisodeTitle != null)
+                                  Text(
+                                    playItem.nextEpisodeTitle!,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                const SizedBox(height: 4),
+                              ],
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            height: 4,
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              backgroundColor: Colors.white10,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: 12,
+                            right: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.white24),
+                              ),
+                              child: Text(
+                                remainingSecs.ceil().clamp(0, 10).toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+
+        // --- Skip Intro/Recap/Credits ---
+        final label = active!.type.toLowerCase() == 'intro'
             ? 'Skip Intro'
             : active.type.toLowerCase() == 'recap'
                 ? 'Skip Recap'
@@ -743,6 +1269,12 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onActivity;
   final bool isFullscreen;
   final VoidCallback onToggleFullscreen;
+  final List<MediaItemSubtitle> externalSubtitles;
+  final int activeExternalSubIndex;
+  final Function(int index, String url) onSelectExternalSubtitle;
+  final VoidCallback onDisableExternalSubtitle;
+  final FocusNode playButtonFocusNode;
+  final VoidCallback onBackToPlayer;
 
   const _ControlsOverlay({
     super.key,
@@ -753,14 +1285,22 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onActivity,
     required this.isFullscreen,
     required this.onToggleFullscreen,
+    this.externalSubtitles = const [],
+    this.activeExternalSubIndex = -1,
+    required this.onSelectExternalSubtitle,
+    required this.onDisableExternalSubtitle,
+    required this.playButtonFocusNode,
+    required this.onBackToPlayer,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Gradient scrim at top and bottom.
-        Positioned.fill(
+    return FocusTraversalGroup(
+      policy: OrderedTraversalPolicy(),
+      child: Stack(
+        children: [
+          // Gradient scrim at top and bottom.
+          Positioned.fill(
           child: Column(
             children: [
               Container(
@@ -796,9 +1336,13 @@ class _ControlsOverlay extends StatelessWidget {
           child: SafeArea(
             child: Row(
               children: [
-                IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
-                  onPressed: onBack,
+                FocusTraversalOrder(
+                  order: const NumericFocusOrder(0),
+                  child: _TvIconButton(
+                    icon: Icons.arrow_back,
+                    onPressed: onBack,
+                    tooltip: 'Back',
+                  ),
                 ),
               ],
             ),
@@ -816,7 +1360,10 @@ class _ControlsOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _SeekBar(controller: controller, onActivity: onActivity),
+                  FocusTraversalOrder(
+                    order: const NumericFocusOrder(1),
+                    child: _SeekBar(controller: controller, onActivity: onActivity),
+                  ),
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -825,15 +1372,18 @@ class _ControlsOverlay extends StatelessWidget {
                         valueListenable: controller,
                         builder: (context, val, _) {
                           final playing = val.isPlaying;
-                          return IconButton(
-                            icon: Icon(
-                              playing ? Icons.pause : Icons.play_arrow,
-                              color: Colors.white,
+                          return FocusTraversalOrder(
+                            order: const NumericFocusOrder(2),
+                            child: _TvIconButton(
+                              focusNode: playButtonFocusNode,
+                              icon: playing ? Icons.pause : Icons.play_arrow,
+                              tooltip: playing ? 'Pause' : 'Play',
+                              onPressed: () {
+                                onActivity();
+                                playing ? controller.pause() : controller.play();
+                              },
+                              onUpKey: onBackToPlayer,
                             ),
-                            onPressed: () {
-                              onActivity();
-                              playing ? controller.pause() : controller.play();
-                            },
                           );
                         },
                       ),
@@ -848,39 +1398,59 @@ class _ControlsOverlay extends StatelessWidget {
                         },
                       ),
                       const Spacer(),
-                      SubtitleTrackSelector(controller: controller, onActivity: onActivity),
-                      AudioTrackSelector(controller: controller, onActivity: onActivity),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(3),
+                        child: SubtitleTrackSelector(
+                          controller: controller,
+                          onActivity: onActivity,
+                          externalSubtitles: externalSubtitles,
+                          activeExternalSubIndex: activeExternalSubIndex,
+                          onSelectExternalSubtitle: onSelectExternalSubtitle,
+                          onDisableExternalSubtitle: onDisableExternalSubtitle,
+                        ),
+                      ),
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(4),
+                        child: AudioTrackSelector(controller: controller, onActivity: onActivity),
+                      ),
                       // Volume
                       ValueListenableBuilder<VideoPlayerValue>(
                         valueListenable: controller,
                         builder: (context, val, _) {
                           final vol = val.volume;
-                          return IconButton(
-                            icon: Icon(
-                              vol == 0
+                          return FocusTraversalOrder(
+                            order: const NumericFocusOrder(5),
+                            child: _TvIconButton(
+                              icon: vol == 0
                                   ? Icons.volume_off
                                   : vol < 0.5
                                       ? Icons.volume_down
                                       : Icons.volume_up,
-                              color: Colors.white,
+                              tooltip: 'Volume',
+                              onPressed: () {
+                                onActivity();
+                                controller.setVolume(vol > 0 ? 0 : 1.0);
+                              },
                             ),
-                            onPressed: () {
-                              onActivity();
-                              controller.setVolume(vol > 0 ? 0 : 1.0);
-                            },
                           );
                         },
                       ),
 
-                      FullscreenButton(
-                        onActivity: onActivity,
-                        isFullscreen: isFullscreen,
-                        onToggle: onToggleFullscreen,
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(6),
+                        child: FullscreenButton(
+                          onActivity: onActivity,
+                          isFullscreen: isFullscreen,
+                          onToggle: onToggleFullscreen,
+                        ),
                       ),
-                      PlayerMoreMenuButton(
-                        controller: controller,
-                        playlist: playlist,
-                        initialIndex: initialIndex,
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(7),
+                        child: PlayerMoreMenuButton(
+                          controller: controller,
+                          playlist: playlist,
+                          initialIndex: initialIndex,
+                        ),
                       ),
                     ],
                   ),
@@ -890,7 +1460,7 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         ),
       ],
-    );
+    ));
   }
 
   String _fmt(Duration d) {
@@ -912,6 +1482,30 @@ class _SeekBar extends StatefulWidget {
 
 class _SeekBarState extends State<_SeekBar> {
   double? _dragging;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = FocusNode(onKeyEvent: (node, event) {
+      if (event is KeyDownEvent || event is KeyRepeatEvent) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          FocusScope.of(context).focusInDirection(TraversalDirection.down);
+          return KeyEventResult.handled;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          FocusScope.of(context).focusInDirection(TraversalDirection.up);
+          return KeyEventResult.handled;
+        }
+      }
+      return KeyEventResult.ignored;
+    });
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -933,6 +1527,7 @@ class _SeekBarState extends State<_SeekBar> {
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
           ),
           child: Slider(
+            focusNode: _focusNode,
             min: 0,
             max: total > 0 ? total : 1.0,
             value: current,
@@ -948,6 +1543,64 @@ class _SeekBarState extends State<_SeekBar> {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TV-focusable icon button – shows a bright ring when focused via D-Pad.
+// ─────────────────────────────────────────────────────────────────────────────
+class _TvIconButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+  final String? tooltip;
+  final double size;
+  final FocusNode? focusNode;
+  final VoidCallback? onUpKey;
+
+  const _TvIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.tooltip,
+    this.size = 26,
+    this.focusNode,
+    this.onUpKey,
+  });
+
+  @override
+  State<_TvIconButton> createState() => _TvIconButtonState();
+}
+
+class _TvIconButtonState extends State<_TvIconButton> {
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      canRequestFocus: false,
+      onKeyEvent: (node, event) {
+        if (event is KeyDownEvent) {
+          // Up key: escape controls back to video surface
+          if (event.logicalKey == LogicalKeyboardKey.arrowUp && widget.onUpKey != null) {
+            widget.onUpKey!();
+            return KeyEventResult.handled;
+          }
+          // TV directional bypass: force traversal order since Spacer breaks geometry
+          if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+            FocusScope.of(context).nextFocus();
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            FocusScope.of(context).previousFocus();
+            return KeyEventResult.handled;
+          }
+        }
+        return KeyEventResult.ignored;
+      },
+      child: IconButton(
+        focusNode: widget.focusNode,
+        icon: Icon(widget.icon, color: Colors.white, size: widget.size),
+        tooltip: widget.tooltip,
+        onPressed: widget.onPressed,
+      ),
     );
   }
 }
@@ -1178,24 +1831,42 @@ class PlayerMoreMenuButton extends StatelessWidget {
 }
 
 String _getLanguageName(String code) {
-  switch (code.toUpperCase()) {
-    case 'ENG': case 'EN': return 'English';
-    case 'ITA': case 'IT': return 'Italian';
-    case 'FRA': case 'FRE': case 'FR': return 'French';
-    case 'GER': case 'DEU': case 'DE': return 'German';
-    case 'SPA': case 'ES': return 'Spanish';
-    case 'JPN': case 'JA': return 'Japanese';
-    case 'KOR': case 'KO': return 'Korean';
-    case 'CHI': case 'ZHO': case 'ZH': return 'Chinese';
-    case 'RUS': case 'RU': return 'Russian';
-    case 'HIN': case 'HI': return 'Hindi';
-    case 'POR': case 'PT': return 'Portuguese';
-    case 'ARA': case 'AR': return 'Arabic';
-    case 'TUR': case 'TR': return 'Turkish';
-    case 'POL': case 'PL': return 'Polish';
-    case 'NLD': case 'DUT': case 'NL': return 'Dutch';
+  final cleanCode = code.trim().toUpperCase();
+  switch (cleanCode) {
+    case 'ENG': case 'EN': case 'ENGLISH': return 'English';
+    case 'ITA': case 'IT': case 'ITALIAN': return 'Italian';
+    case 'FRA': case 'FRE': case 'FR': case 'FRENCH': return 'French';
+    case 'GER': case 'DEU': case 'DE': case 'GERMAN': return 'German';
+    case 'SPA': case 'ES': case 'SPANISH': return 'Spanish';
+    case 'JPN': case 'JA': case 'JAPANESE': return 'Japanese';
+    case 'KOR': case 'KO': case 'KOREAN': return 'Korean';
+    case 'CHI': case 'ZHO': case 'ZH': case 'CHINESE': return 'Chinese';
+    case 'RUS': case 'RU': case 'RUSSIAN': return 'Russian';
+    case 'HIN': case 'HI': case 'HINDI': return 'Hindi';
+    case 'POR': case 'PT': case 'PORTUGUESE': case 'POB': case 'PBR': return 'Portuguese';
+    case 'ARA': case 'AR': case 'ARABIC': return 'Arabic';
+    case 'TUR': case 'TR': case 'TURKISH': return 'Turkish';
+    case 'POL': case 'PL': case 'POLISH': return 'Polish';
+    case 'NLD': case 'DUT': case 'NL': case 'DUTCH': return 'Dutch';
+    case 'SWE': case 'SV': case 'SWEDISH': return 'Swedish';
+    case 'NOR': case 'NO': case 'NORWEGIAN': return 'Norwegian';
+    case 'DAN': case 'DA': case 'DANISH': return 'Danish';
+    case 'FIN': case 'FI': case 'FINNISH': return 'Finnish';
+    case 'GRE': case 'ELL': case 'EL': case 'GREEK': return 'Greek';
+    case 'HUN': case 'HU': case 'HUNGARIAN': return 'Hungarian';
+    case 'CES': case 'CZE': case 'CS': case 'CZECH': return 'Czech';
+    case 'RON': case 'RUM': case 'RO': case 'ROMANIAN': return 'Romanian';
+    case 'HEB': case 'HE': case 'HEBREW': return 'Hebrew';
+    case 'VIE': case 'VI': case 'VIETNAMESE': return 'Vietnamese';
+    case 'IND': case 'ID': case 'INDONESIAN': return 'Indonesian';
+    case 'THA': case 'TH': case 'THAI': return 'Thai';
+    case 'UKR': case 'UK': case 'UKRAINIAN': return 'Ukrainian';
     case 'UND': return 'Unknown';
-    default: return code.toUpperCase();
+    default:
+      if (cleanCode.length > 3) {
+        return cleanCode[0] + cleanCode.substring(1).toLowerCase();
+      }
+      return cleanCode;
   }
 }
 
@@ -1223,8 +1894,8 @@ class AudioTrackSelector extends StatelessWidget {
     final audioTracks = mediaInfo?.audio ?? [];
     if (audioTracks.isEmpty) return const SizedBox.shrink();
 
-    return IconButton(
-      icon: const Icon(Icons.audiotrack, color: Colors.white),
+    return _TvIconButton(
+      icon: Icons.audiotrack,
       tooltip: 'Audio Tracks',
       onPressed: () {
         onActivity();
@@ -1344,7 +2015,20 @@ class AudioTrackSelector extends StatelessWidget {
 class SubtitleTrackSelector extends StatelessWidget {
   final VideoPlayerController controller;
   final VoidCallback onActivity;
-  const SubtitleTrackSelector({super.key, required this.controller, required this.onActivity});
+  final List<MediaItemSubtitle> externalSubtitles;
+  final int activeExternalSubIndex;
+  final Function(int index, String url) onSelectExternalSubtitle;
+  final VoidCallback onDisableExternalSubtitle;
+
+  const SubtitleTrackSelector({
+    super.key,
+    required this.controller,
+    required this.onActivity,
+    this.externalSubtitles = const [],
+    this.activeExternalSubIndex = -1,
+    required this.onSelectExternalSubtitle,
+    required this.onDisableExternalSubtitle,
+  });
 
   Widget _buildBadge(String text, {bool isLang = false}) {
     return Container(
@@ -1363,10 +2047,10 @@ class SubtitleTrackSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     final mediaInfo = controller.getMediaInfo();
     final subTracks = mediaInfo?.subtitle ?? [];
-    if (subTracks.isEmpty) return const SizedBox.shrink();
+    if (subTracks.isEmpty && externalSubtitles.isEmpty) return const SizedBox.shrink();
 
-    return IconButton(
-      icon: const Icon(Icons.subtitles, color: Colors.white),
+    return _TvIconButton(
+      icon: Icons.subtitles,
       tooltip: 'Subtitles',
       onPressed: () {
         onActivity();
@@ -1392,70 +2076,97 @@ class SubtitleTrackSelector extends StatelessWidget {
                     Flexible(
                       child: ListView.builder(
                         shrinkWrap: true,
-                        itemCount: subTracks.length + 2,
+                        itemCount: subTracks.length + externalSubtitles.length + 1,
                         itemBuilder: (context, index) {
                           final activeIds = controller.getActiveSubtitleTracks() ?? [];
                           final activeId = activeIds.isNotEmpty ? activeIds.first : -1;
                           
                           if (index == 0) {
-                            final isSelected = activeIds.isEmpty;
+                            final isSelected = activeIds.isEmpty && activeExternalSubIndex == -1;
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                               title: Text('Disabled', style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 16)),
                               trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : null,
                               onTap: () {
+                                onDisableExternalSubtitle();
                                 controller.setSubtitleTracks([]);
                                 Navigator.pop(context);
                               },
                             );
                           }
                           
-                          if (index == 1) {
+                          // Internal container tracks
+                          if (index - 1 < subTracks.length) {
+                            final track = subTracks[index - 1];
+                            final listPosition = index - 1;
+                            final isSelected = listPosition == activeId && activeIds.isNotEmpty && activeExternalSubIndex == -1;
+                            
+                            final title = track.metadata['title'] ?? '';
+                            String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+                            
+                            if (rawLang == 'UND' || rawLang.isEmpty) {
+                              final upTitle = title.toUpperCase();
+                              if (upTitle.contains('ENG')) rawLang = 'ENG';
+                              else if (upTitle.contains('ITA')) rawLang = 'ITA';
+                              else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
+                              else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
+                              else if (upTitle.contains('SPA')) rawLang = 'SPA';
+                              else if (upTitle.contains('JPN')) rawLang = 'JPN';
+                              else if (upTitle.contains('KOR')) rawLang = 'KOR';
+                              else if (upTitle.contains('HIN')) rawLang = 'HIN';
+                            }
+
+                            final lang = _getLanguageName(rawLang);
+                            final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
+                            
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                              title: const Text('Auto', style: TextStyle(color: Colors.white, fontWeight: FontWeight.normal, fontSize: 16)),
+                              title: Row(
+                                children: [
+                                  _buildBadge(lang, isLang: true),
+                                  Expanded(
+                                    child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                  ),
+                                ],
+                              ),
+                              trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
                               onTap: () {
-                                controller.setSubtitleTracks([-1]);
+                                onDisableExternalSubtitle();
+                                controller.setSubtitleTracks([listPosition]);
                                 Navigator.pop(context);
                               },
                             );
                           }
 
-                          final track = subTracks[index - 2];
-                          final listPosition = index - 2;
-                          final isSelected = listPosition == activeId && activeIds.isNotEmpty;
-                          
-                          final title = track.metadata['title'] ?? '';
-                          String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
-                          
-                          if (rawLang == 'UND' || rawLang.isEmpty) {
-                            final upTitle = title.toUpperCase();
-                            if (upTitle.contains('ENG')) rawLang = 'ENG';
-                            else if (upTitle.contains('ITA')) rawLang = 'ITA';
-                            else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
-                            else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
-                            else if (upTitle.contains('SPA')) rawLang = 'SPA';
-                            else if (upTitle.contains('JPN')) rawLang = 'JPN';
-                            else if (upTitle.contains('KOR')) rawLang = 'KOR';
-                            else if (upTitle.contains('HIN')) rawLang = 'HIN';
-                          }
+                          // External addon tracks
+                          final extIndex = index - 1 - subTracks.length;
+                          final extSub = externalSubtitles[extIndex];
+                          final isSelected = activeExternalSubIndex == extIndex;
 
-                          final lang = _getLanguageName(rawLang);
-                          final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
-                          
+                          final fullLang = _getLanguageName(extSub.language);
+                          final addonTitle = extSub.label.isNotEmpty ? extSub.label : 'Addon';
+
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                             title: Row(
                               children: [
-                                _buildBadge(lang, isLang: true),
+                                _buildBadge(fullLang, isLang: true),
                                 Expanded(
-                                  child: Text(mainTitle, style: TextStyle(color: isSelected ? Colors.blueAccent : Colors.white, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 15), overflow: TextOverflow.ellipsis),
+                                  child: Text(
+                                    addonTitle,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.blueAccent : Colors.white,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                      fontSize: 15,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ],
                             ),
                             trailing: isSelected ? const Icon(Icons.check, color: Colors.blueAccent) : const SizedBox(width: 24),
                             onTap: () {
-                              controller.setSubtitleTracks([listPosition]);
+                              onSelectExternalSubtitle(extIndex, extSub.url);
                               Navigator.pop(context);
                             },
                           );
@@ -1487,8 +2198,9 @@ class FullscreenButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
+    return _TvIconButton(
+      icon: isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+      tooltip: isFullscreen ? 'Exit Fullscreen' : 'Fullscreen',
       onPressed: () {
         onActivity();
         onToggle();

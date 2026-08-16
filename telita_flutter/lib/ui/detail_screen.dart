@@ -17,7 +17,15 @@ class DetailScreen extends StatefulWidget {
   final String type; // "movie" | "series"
   final String? initialVideoId;
   final VoidCallback onBack;
-  final Function(String url, String type, String id, {Map<String, String>? headers, List<MediaSegment>? segments}) onPlay;
+  final Function(
+    String url,
+    String type,
+    String id, {
+    Map<String, String>? headers,
+    List<MediaSegment>? segments,
+    MetaPreview? meta,
+    List<MediaItemSubtitle>? subtitles,
+  }) onPlay;
 
   const DetailScreen({
     super.key,
@@ -36,6 +44,8 @@ class _DetailScreenState extends State<DetailScreen> {
   MetaPreview? _meta;
   MdbListRatings? _mdbListRatings;
   List<StreamModel> _streams = [];
+  List<Subtitle> _subtitles = [];
+  bool _subtitlesLoading = false;
   List<InstalledAddon> _streamAddons = [];
   Set<String> _loadingAddonNames = {};
   Map<String, int> _addonStreamCounts = {};
@@ -74,6 +84,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
     if (widget.type == "movie") {
       _fetchStreams(widget.item.id);
+      _fetchSubtitles(widget.item.id);
     } else {
       final videos = (_meta ?? widget.item).videos;
       if (videos != null && videos.isNotEmpty) {
@@ -102,7 +113,26 @@ class _DetailScreenState extends State<DetailScreen> {
           }
         });
         _fetchStreams(targetVid.id);
+        _fetchSubtitles(targetVid.id);
       }
+    }
+  }
+
+  Future<void> _fetchSubtitles(String videoId) async {
+    setState(() {
+      _subtitlesLoading = true;
+      _subtitles = [];
+    });
+    try {
+      final subs = await AddonRegistry.instance.getSubtitles(widget.type, videoId);
+      if (mounted) {
+        setState(() {
+          _subtitles = subs;
+          _subtitlesLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _subtitlesLoading = false);
     }
   }
 
@@ -142,6 +172,14 @@ class _DetailScreenState extends State<DetailScreen> {
         });
       });
     }
+  }
+
+  static bool _hasValidRating(String? rating) {
+    if (rating == null || rating.trim().isEmpty) return false;
+    final r = rating.trim();
+    if (r == '0' || r == '0.0' || r == '0.00' || r == 'null') return false;
+    final val = double.tryParse(r);
+    return val != null && val > 0;
   }
 
   static Map<String, dynamic> _decodeJsonMap(String body) => jsonDecode(body) as Map<String, dynamic>;
@@ -267,8 +305,18 @@ class _DetailScreenState extends State<DetailScreen> {
       segments = await _fetchSkipSegments(_selectedVideoId);
     }
 
+    final mediaSubtitles = _subtitles.map((sub) {
+      final langCode = sub.lang.isNotEmpty ? sub.lang : 'en';
+      final addon = (sub.addonName != null && sub.addonName!.isNotEmpty) ? sub.addonName! : 'Addon';
+      return MediaItemSubtitle(
+        url: sub.url,
+        language: langCode,
+        label: addon,
+      );
+    }).toList();
+
     if (stream.url != null) {
-      widget.onPlay(stream.url!, widget.type, subtitleQueryId, headers: headers, segments: segments);
+      widget.onPlay(stream.url!, widget.type, subtitleQueryId, headers: headers, segments: segments, meta: _meta, subtitles: mediaSubtitles);
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted) setState(() => _resolvingHash = null);
       });
@@ -282,7 +330,7 @@ class _DetailScreenState extends State<DetailScreen> {
       final encodedUrl = Uri.encodeComponent(stream.nzbUrl!);
       final encodedServer = Uri.encodeComponent(stream.servers!.first);
       final playUrl = "http://127.0.0.1:8081/api/play/nzb?nzbUrl=$encodedUrl&server=$encodedServer";
-      widget.onPlay(playUrl, widget.type, subtitleQueryId, segments: segments);
+      widget.onPlay(playUrl, widget.type, subtitleQueryId, segments: segments, meta: _meta, subtitles: mediaSubtitles);
       Future.delayed(const Duration(seconds: 4), () {
         if (mounted) setState(() => _resolvingHash = null);
       });
@@ -294,7 +342,7 @@ class _DetailScreenState extends State<DetailScreen> {
         });
       }
       if (url != null) {
-        widget.onPlay(url, widget.type, subtitleQueryId, segments: segments);
+        widget.onPlay(url, widget.type, subtitleQueryId, segments: segments, meta: _meta, subtitles: mediaSubtitles);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -469,7 +517,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                     _buildMetaText(_meta!.releaseInfo!),
                                   if (_meta?.runtime != null)
                                     _buildMetaText(_meta!.runtime!),
-                                  if (_meta?.imdbRating != null)
+                                  if (_hasValidRating(_meta?.imdbRating))
                                     _buildMetaText('⭐ ${_meta!.imdbRating}'),
                                 ],
                               ),
@@ -771,6 +819,7 @@ class _DetailScreenState extends State<DetailScreen> {
               _viewingStreams = true;
             });
             _fetchStreams(ep.id);
+            _fetchSubtitles(ep.id);
           },
         );
       },
@@ -854,6 +903,24 @@ class _DetailScreenState extends State<DetailScreen> {
       );
     }
 
+    String? epBadge;
+    if (widget.type == "series") {
+      MetaVideo? currentVid;
+      if (_meta?.videos != null) {
+        try {
+          currentVid = _meta!.videos!.firstWhere((v) => v.id == _selectedVideoId);
+        } catch (_) {}
+      }
+      if (currentVid?.season != null && currentVid?.episode != null) {
+        epBadge = "S${currentVid!.season}E${currentVid!.episode}";
+      } else if (_selectedVideoId.contains(':')) {
+        final parts = _selectedVideoId.split(':');
+        if (parts.length >= 3) {
+          epBadge = "S${parts[1]}E${parts[2]}";
+        }
+      }
+    }
+
     return Column(
       children: [
         // Header
@@ -884,6 +951,31 @@ class _DetailScreenState extends State<DetailScreen> {
                     'Available Streams',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
+                  if (epBadge != null) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.4),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        epBadge,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(width: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -1317,15 +1409,34 @@ class _EpisodeCardState extends State<EpisodeCard> {
                           fontSize: 14,
                         ),
                       ),
-                      if (ep.released != null) ...[
+                      if (ep.released != null || _DetailScreenState._hasValidRating(ep.imdbRating)) ...[
                         const SizedBox(height: 4),
-                        Text(
-                          ep.released!.split('T')[0],
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Row(
+                          children: [
+                            if (ep.released != null)
+                              Text(
+                                ep.released!.split('T')[0],
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            if (ep.released != null && _DetailScreenState._hasValidRating(ep.imdbRating))
+                              const SizedBox(width: 8),
+                            if (_DetailScreenState._hasValidRating(ep.imdbRating)) ...[
+                              const Icon(Icons.star, color: Colors.amber, size: 12),
+                              const SizedBox(width: 4),
+                              Text(
+                                ep.imdbRating!,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ]
+                          ],
+                        )
                       ]
                     ],
                   ),

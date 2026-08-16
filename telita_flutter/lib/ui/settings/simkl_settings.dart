@@ -186,11 +186,14 @@ class _SimklSettingsScreenState extends State<SimklSettingsScreen> {
                                 label: const Text('Open simkl.com/pin'),
                               ),
                               const SizedBox(width: 12),
-                              ElevatedButton(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                              OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.green, width: 1.5),
+                                  foregroundColor: Colors.green,
+                                ),
                                 onPressed: _isAuthenticatingSimkl ? null : _checkSimklDevicePin,
                                 child: _isAuthenticatingSimkl
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.green))
                                     : const Text('Check Connection Status'),
                               ),
                             ],

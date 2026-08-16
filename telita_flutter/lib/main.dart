@@ -17,6 +17,7 @@ import 'ui/splash_screen.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter_acrylic/flutter_acrylic.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tv_media3/flutter_tv_media3.dart';
 import 'package:path/path.dart' as p;
 
@@ -24,6 +25,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    try {
+      await Window.initialize();
+    } catch (e) {
+      print('Window.initialize error: $e');
+    }
     try {
       String executable;
       if (Platform.isMacOS) {
@@ -78,8 +84,44 @@ void main() async {
   runApp(const TelitaApp());
 }
 
-class TelitaApp extends StatelessWidget {
+class TelitaApp extends StatefulWidget {
   const TelitaApp({super.key});
+
+  @override
+  State<TelitaApp> createState() => _TelitaAppState();
+}
+
+class _TelitaAppState extends State<TelitaApp> {
+  bool _isGlobalFullscreen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      HardwareKeyboard.instance.addHandler(_handleGlobalKey);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      HardwareKeyboard.instance.removeHandler(_handleGlobalKey);
+    }
+    super.dispose();
+  }
+
+  bool _handleGlobalKey(KeyEvent event) {
+    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.f11) {
+      _isGlobalFullscreen = !_isGlobalFullscreen;
+      if (_isGlobalFullscreen) {
+        Window.enterFullscreen();
+      } else {
+        Window.exitFullscreen();
+      }
+      return true;
+    }
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -219,62 +261,86 @@ class _AppContainerState extends State<AppContainer> {
     String? poster,
     Map<String, String>? headers,
     List<MediaSegment>? segments,
+    List<MediaItemSubtitle>? subtitles,
   }) async {
     final mediaItemName =
         name ?? item?.name ?? _selectedDetailItem?.name ?? 'Unknown Content';
     final mediaItemPoster =
         poster ?? item?.poster ?? _selectedDetailItem?.poster;
 
-    final effectiveHeaders = <String, String>{
-      'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Sec-Fetch-Dest': 'video',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'cross-site',
-      if (headers != null) ...headers,
-    };
+    double maxProgress = 0;
+    bool shouldPlayNext = false;
+    bool hasNextEp = false;
+    MetaVideo? nextVideo;
+
+    if (type == 'series' && item != null && item.videos != null) {
+      final idx = item.videos!.indexWhere((v) => v.id == id);
+      if (idx != -1 && idx < item.videos!.length - 1) {
+        hasNextEp = true;
+        nextVideo = item.videos![idx + 1];
+      }
+    }
+
+    final Map<String, String>? effectiveHeaders = (headers != null && headers.isNotEmpty)
+        ? headers
+        : null;
 
     final originalUrl = url;
     print(' [PLAY] Requested stream: $originalUrl');
 
-    // Resolve 302 redirects before handing to media_kit.
-    // FFmpeg/libmpv silently drops the HTTP Range header when following a 302.
-    // This causes EBML header parsing failures on MKV streams.
-    try {
-      final request = await HttpClient()
-          .headUrl(Uri.parse(url))
-          .timeout(const Duration(seconds: 5));
-      request.followRedirects = false;
-      
-      effectiveHeaders.forEach((k, v) {
-        try {
-          request.headers.set(k, v);
-        } catch (_) {}
-      });
-
-      final response = await request.close();
-      print(' [PLAY] HEAD $url → HTTP ${response.statusCode}');
-      if (response.statusCode >= 300 && response.statusCode < 400) {
-        final location = response.headers.value('location');
-        if (location != null) {
-          url = location;
-          print(' [PLAY] Resolved redirect → $url');
-        } else {
-          print('⚠️ [PLAY] Got ${response.statusCode} but no Location header!');
+    // Only resolve 302 redirects via HEAD requests for non-HTTPS http:// links.
+    // Presigned HTTPS links (Cloudflare R2, AWS S3, etc.) reject HEAD requests and
+    // custom headers with 403 Forbidden (SigV4 signature mismatch) and MUST be passed as-is.
+    if (url.startsWith('http://') && !url.contains('X-Amz-') && !url.contains('Signature=')) {
+      try {
+        final request = await HttpClient()
+            .headUrl(Uri.parse(url))
+            .timeout(const Duration(seconds: 5));
+        request.followRedirects = false;
+        
+        if (effectiveHeaders != null) {
+          effectiveHeaders.forEach((k, v) {
+            try {
+              request.headers.set(k, v);
+            } catch (_) {}
+          });
         }
-      } else if (response.statusCode != 200) {
-        print(
-          '⚠️ [PLAY] Unexpected HTTP ${response.statusCode} for HEAD request',
-        );
+
+        final response = await request.close();
+        print(' [PLAY] HEAD $url → HTTP ${response.statusCode}');
+        if (response.statusCode >= 300 && response.statusCode < 400) {
+          final location = response.headers.value('location');
+          if (location != null) {
+            url = location;
+            print(' [PLAY] Resolved redirect → $url');
+          } else {
+            print('⚠️ [PLAY] Got ${response.statusCode} but no Location header!');
+          }
+        }
+      } catch (e) {
+        print('⚠️ [PLAY] HEAD request failed ($e), using original URL');
       }
-    } catch (e, st) {
-      print('⚠️ [PLAY] HEAD request failed ($e), using original URL');
-      print('⚠️ [PLAY] Stacktrace: $st');
     }
 
-    print(' [PLAY] Final URL passed to media_kit: $url');
+    print(' [PLAY] Final URL passed to player: $url');
+
+    List<MediaItemSubtitle>? effectiveSubtitles = subtitles;
+    if (effectiveSubtitles == null || effectiveSubtitles.isEmpty) {
+      try {
+        final addonSubs = await AddonRegistry.instance.getSubtitles(type, id);
+        if (addonSubs.isNotEmpty) {
+          effectiveSubtitles = addonSubs.map((sub) {
+            final langCode = sub.lang.isNotEmpty ? sub.lang : 'en';
+            final label = '${langCode.toUpperCase()} (Addon)';
+            return MediaItemSubtitle(
+              url: sub.url,
+              language: langCode,
+              label: label,
+            );
+          }).toList();
+        }
+      } catch (_) {}
+    }
 
     final mediaItems = [
       PlaylistMediaItem(
@@ -286,6 +352,7 @@ class _AppContainerState extends State<AppContainer> {
         mediaItemType: MediaItemType.video,
         startPosition: initialPosition,
         headers: effectiveHeaders,
+        subtitles: effectiveSubtitles,
         segments: segments,
         saveWatchTime:
             ({
@@ -294,6 +361,11 @@ class _AppContainerState extends State<AppContainer> {
               required position,
               required playIndex,
             }) async {
+              if (duration > 0) {
+                double prog = (position / duration) * 100;
+                if (prog > maxProgress) maxProgress = prog;
+              }
+
               if (position > 5 && duration > 0) {
                 WatchHistory.instance.save(
                   WatchEntry(
@@ -307,16 +379,29 @@ class _AppContainerState extends State<AppContainer> {
                     updatedAt: DateTime.now().millisecondsSinceEpoch,
                   ),
                 );
-
-                if (position / duration >= 0.8 || position > 300) {
-                  SimklClient.scrobbleWatched(
-                    type: type,
-                    title: mediaItemName,
-                    contentId: id,
-                  );
-                }
               }
             },
+        onScrobble: ({required action, required position, required duration}) async {
+          double progress = 0;
+          if (duration > 0) {
+            progress = (position / duration) * 100;
+          }
+          await SimklClient.scrobbleEvent(
+            action: action,
+            type: type,
+            contentId: id,
+            progress: progress,
+          );
+        },
+        hasNextEpisode: hasNextEp,
+        nextEpisodeTitle: nextVideo?.title,
+        nextEpisodeThumbnail: nextVideo?.thumbnail,
+        nextEpisodeSeason: nextVideo?.season,
+        nextEpisodeNumber: nextVideo?.episode,
+        onNextEpisode: () {
+          shouldPlayNext = true;
+          Navigator.of(context).pop();
+        },
       ),
     ];
 
@@ -347,11 +432,24 @@ class _AppContainerState extends State<AppContainer> {
       ),
     );
 
-    FtvMedia3PlayerController().openPlayer(
+    await FtvMedia3PlayerController().openPlayer(
       context: context,
       playlist: mediaItems,
       initialIndex: 0,
     );
+
+    if (type == 'series' && item != null && (shouldPlayNext || maxProgress > 99.0)) {
+      final videos = item.videos;
+      if (videos != null) {
+        final currentIdx = videos.indexWhere((v) => v.id == id);
+        if (currentIdx != -1 && currentIdx < videos.length - 1) {
+          final nextVideo = videos[currentIdx + 1];
+          setState(() {
+            _selectedInitialVideoId = nextVideo.id;
+          });
+        }
+      }
+    }
   }
 
   @override
@@ -560,6 +658,7 @@ class _AppContainerState extends State<AppContainer> {
             child: FocusScope(
               autofocus: true,
               child: DetailScreen(
+                key: ValueKey('${_selectedDetailItem!.id}_$_selectedInitialVideoId'),
                 item: _selectedDetailItem!,
                 type: _selectedDetailType!,
                 initialVideoId: _selectedInitialVideoId,
@@ -567,14 +666,15 @@ class _AppContainerState extends State<AppContainer> {
                   _selectedDetailItem = null;
                   _selectedInitialVideoId = null;
                 }),
-                onPlay: (url, type, id, {headers, segments}) => _playStream(
+                onPlay: (url, type, id, {headers, segments, meta, subtitles}) => _playStream(
                   context,
                   url,
                   type,
                   id,
-                  item: _selectedDetailItem,
+                  item: meta ?? _selectedDetailItem,
                   headers: headers,
                   segments: segments,
+                  subtitles: subtitles,
                 ),
               ),
             ),

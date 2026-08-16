@@ -1,0 +1,3 @@
+SIMKL_DEBUG: activities body={"all":"2026-08-14T11:14:21Z","settings":{"all":null},"tv_shows":{"all":null,"rated_at":null,"playback":null,"plantowatch":null,"watching":null,"completed":null,"hold":null,"dropped":null,"removed_from_list":null},"anime":{"all":null,"rated_at":null,"playback":null,"plantowatch":null,"watching":null,"completed":null,"hold":null,"dropped":null,"removed_from_list":null},"movies":{"all":"2026-08-14T11:14:21Z","rated_at":null,"playback":"2026-08-14T11:14:21Z","plantowatch":"2026-05-15T13:17:24Z","completed":"2026-05-15T13:26:54Z","dropped":null,"removed_from_list":null}}
+SIMKL_DEBUG: /sync/shows status=200 body=null
+SIMKL_DEBUG: /sync/movies status=200 body=null

@@ -51,6 +51,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _initDeviceAuth() async {
     if (_isDisposed) return;
+    debugPrint('[AuthScreen] Initializing device code authentication...');
     setState(() {
       _isLoading = true;
       _error = '';
@@ -60,6 +61,7 @@ class _AuthScreenState extends State<AuthScreen> {
     if (_isDisposed) return;
     
     if (res.containsKey('error')) {
+      debugPrint('[AuthScreen] Error fetching device code: ${res['error']}');
       setState(() {
         _error = res['error'];
         _isLoading = false;
@@ -67,6 +69,7 @@ class _AuthScreenState extends State<AuthScreen> {
       return;
     }
 
+    debugPrint('[AuthScreen] Received user_code: ${res['user_code']}, starting poll in 5 seconds.');
     setState(() {
       _deviceCode = res['device_code'];
       _userCode = res['user_code'];
@@ -85,8 +88,10 @@ class _AuthScreenState extends State<AuthScreen> {
     if (_isDisposed) return;
 
     if (res['success'] == true) {
+      debugPrint('[AuthScreen] Device code login completed successfully!');
       if (mounted) widget.onDone();
     } else if (res['error'] == 'expired_token' || res['error'] == 'invalid_grant') {
+      debugPrint('[AuthScreen] Token status ${res['error']}, re-initiating device code auth.');
       _initDeviceAuth(); // restart flow
     } else {
       _pollingTimer = Timer(const Duration(seconds: 5), _startPolling);

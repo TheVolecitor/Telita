@@ -147,6 +147,7 @@ class MetaVideo {
   final int? episode;
   final String? released;
   final String? thumbnail;
+  final String? imdbRating;
 
   MetaVideo({
     required this.id,
@@ -155,16 +156,30 @@ class MetaVideo {
     this.episode,
     this.released,
     this.thumbnail,
+    this.imdbRating,
   });
 
   factory MetaVideo.fromJson(Map<String, dynamic> json) {
+    final rawRating = (json['imdbRating'] ?? json['rating'] ?? json['imdb_rating'] ?? json['vote_average'])?.toString();
+    String? validRating;
+    if (rawRating != null && rawRating.trim().isNotEmpty) {
+      final r = rawRating.trim();
+      if (r != '0' && r != '0.0' && r != '0.00' && r != 'null') {
+        final val = double.tryParse(r);
+        if (val != null && val > 0) {
+          validRating = r;
+        }
+      }
+    }
+
     return MetaVideo(
       id: json['id'] ?? '',
       title: json['name'] ?? json['title'] ?? '',
       season: json['season'],
-      episode: json['episode'],
-      released: json['released'],
+      episode: json['episode'] ?? json['number'],
+      released: json['released'] ?? json['firstAired'],
       thumbnail: json['thumbnail'] ?? json['tvdb_thumbnail'],
+      imdbRating: validRating,
     );
   }
 }
@@ -335,14 +350,21 @@ class Subtitle {
   final String id;
   final String url;
   final String lang;
+  final String? addonName;
 
-  Subtitle({required this.id, required this.url, required this.lang});
+  Subtitle({
+    required this.id,
+    required this.url,
+    required this.lang,
+    this.addonName,
+  });
 
-  factory Subtitle.fromJson(Map<String, dynamic> json) {
+  factory Subtitle.fromJson(Map<String, dynamic> json, {String? addonName}) {
     return Subtitle(
       id: json['id'] ?? '',
       url: json['url'] ?? '',
       lang: json['lang'] ?? '',
+      addonName: addonName ?? json['addonName'],
     );
   }
 }
@@ -580,9 +602,11 @@ class AddonRegistry {
   bool _supportsResource(InstalledAddon addon, String resourceName, String type, String id) {
     final def = _resourceDef(addon, resourceName);
     if (def == null) return false;
-    if (def.types != null && !def.types!.contains(type)) return false;
-    if (def.idPrefixes != null && def.idPrefixes!.isNotEmpty) {
-      if (!def.idPrefixes!.any((p) => id.startsWith(p))) return false;
+    final types = (def.types != null && def.types!.isNotEmpty) ? def.types! : addon.manifest.types;
+    if (types.isNotEmpty && !types.contains(type)) return false;
+    final prefixes = (def.idPrefixes != null && def.idPrefixes!.isNotEmpty) ? def.idPrefixes! : addon.manifest.idPrefixes;
+    if (prefixes != null && prefixes.isNotEmpty) {
+      if (!prefixes.any((p) => id.startsWith(p))) return false;
     }
     return true;
   }
@@ -689,18 +713,18 @@ class AddonRegistry {
 
   Future<List<Subtitle>> getSubtitles(String type, String id) async {
     final all = <Subtitle>[];
-    await Future.wait(getInstalled().map((addon) async {
-      if (!_supportsResource(addon, "subtitles", type, id)) return;
+    final addons = getInstalled().where((addon) => _supportsResource(addon, "subtitles", type, id)).toList();
+
+    await Future.wait(addons.map((addon) async {
       try {
         final url = "${addon.transportUrl}/subtitles/$type/$id.json";
-        final res = await http.get(Uri.parse(url));
+        final res = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 10));
         if (res.statusCode != 200) return;
         final data = await compute(_decodeJsonMap, res.body);
         final List<dynamic> subs = data['subtitles'] ?? [];
-        all.addAll(subs.map((s) => Subtitle.fromJson(s)));
-      } catch (e) {
-        print("Error getting subtitles: $e");
-      }
+        final parsed = subs.map((s) => Subtitle.fromJson(s, addonName: addon.manifest.name)).toList();
+        all.addAll(parsed);
+      } catch (_) {}
     }));
     return all;
   }

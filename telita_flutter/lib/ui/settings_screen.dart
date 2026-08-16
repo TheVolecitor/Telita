@@ -46,53 +46,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             
-            _buildCategoryTile(
-              icon: Icons.palette_outlined,
-              title: 'Appearance',
-              subtitle: 'App Theme, custom accent and background colors',
-              onTap: () => _navigateTo(const AppearanceSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.subtitles_outlined,
-              title: 'Subtitles',
-              subtitle: 'Language preferences, size, position, and visual styling',
-              onTap: () => _navigateTo(const SubtitleSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.view_carousel_outlined,
-              title: 'Discover Page',
-              subtitle: 'Rearrange catalogs, restrict limits, and toggle visibility on Discover screen',
-              onTap: () => _navigateTo(const CatalogSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.play_circle_outline,
-              title: 'Playback',
-              subtitle: 'Hardware decoding, default volume levels, and resume behavior',
-              onTap: () => _navigateTo(const PlaybackSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.fast_forward_outlined,
-              title: 'Intro Skip',
-              subtitle: 'Automated skipping of intros, credits, and recap segments',
-              onTap: () => _navigateTo(const IntroSkipSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.star_outline,
-              title: 'MDBList Ratings',
-              subtitle: 'Configure IMDb, Rotten Tomatoes, Metacritic, & Trakt scores',
-              onTap: () => _navigateTo(const MDBListSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.sync_outlined,
-              title: 'Simkl Scrobbling',
-              subtitle: 'Automatic tracking and scrobbling of watched movies & TV shows',
-              onTap: () => _navigateTo(const SimklSettingsScreen()),
-            ),
-            _buildCategoryTile(
-              icon: Icons.person_outline,
-              title: 'Account',
-              subtitle: 'Sign in, Sign out, manage profiles and cloud synchronization',
-              onTap: () => _navigateTo(const AccountSettingsScreen()),
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Column(
+                  children: [
+                    _buildCategoryTile(
+                      icon: Icons.palette_outlined,
+                      title: 'Appearance',
+                      subtitle: 'App Theme, custom accent and background colors',
+                      onTap: () => _navigateTo(const AppearanceSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.subtitles_outlined,
+                      title: 'Subtitles',
+                      subtitle: 'Language preferences, size, position, and visual styling',
+                      onTap: () => _navigateTo(const SubtitleSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.view_carousel_outlined,
+                      title: 'Discover Page',
+                      subtitle: 'Rearrange catalogs, restrict limits, and toggle visibility on Discover screen',
+                      onTap: () => _navigateTo(const CatalogSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.play_circle_outline,
+                      title: 'Playback',
+                      subtitle: 'Hardware decoding, default volume levels, and resume behavior',
+                      onTap: () => _navigateTo(const PlaybackSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.fast_forward_outlined,
+                      title: 'Intro Skip',
+                      subtitle: 'Automated skipping of intros, credits, and recap segments',
+                      onTap: () => _navigateTo(const IntroSkipSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.star_outline,
+                      title: 'MDBList Ratings',
+                      subtitle: 'Configure IMDb, Rotten Tomatoes, Metacritic, & Trakt scores',
+                      onTap: () => _navigateTo(const MDBListSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.sync_outlined,
+                      title: 'Simkl Scrobbling',
+                      subtitle: 'Automatic tracking and scrobbling of watched movies & TV shows',
+                      onTap: () => _navigateTo(const SimklSettingsScreen()),
+                    ),
+                    Divider(height: 1, thickness: 1, color: Colors.white.withOpacity(0.05)),
+                    _buildCategoryTile(
+                      icon: Icons.person_outline,
+                      title: 'Account',
+                      subtitle: 'Sign in, Sign out, manage profiles and cloud synchronization',
+                      onTap: () => _navigateTo(const AccountSettingsScreen()),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -106,45 +127,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Row(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: Theme.of(context).colorScheme.secondary, size: 28),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(icon, color: Theme.of(context).colorScheme.secondary, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                  ],
                 ),
-                const SizedBox(width: 24),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 6),
-                      Text(subtitle, style: const TextStyle(color: Colors.white54, fontSize: 14)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: Colors.white30, size: 24),
-              ],
-            ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.white30, size: 24),
+            ],
           ),
         ),
       ),

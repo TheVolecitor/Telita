@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'epg_channel.dart';
 import 'media_segment.dart';
 
@@ -36,6 +37,13 @@ typedef SaveWatchTimeSeconds =
       required int position,
       required int playIndex,
     });
+
+/// A callback function to send playback lifecycle events for scrobbling.
+typedef OnScrobbleEvent = Future<void> Function({
+  required String action, // "start", "pause", "stop"
+  required int position, // in seconds
+  required int duration, // in seconds
+});
 
 /// Represents a single playable item in a playlist.
 ///
@@ -132,6 +140,9 @@ class PlaylistMediaItem {
   /// disabling saving for certain content like live streams.
   final SaveWatchTimeSeconds? saveWatchTime;
 
+  /// A callback to send scrobbling events (start, pause, stop).
+  final OnScrobbleEvent? onScrobble;
+
   /// The type of the media item. Used in the UI to display a corresponding icon.
   final MediaItemType mediaItemType;
 
@@ -147,6 +158,24 @@ class PlaylistMediaItem {
 
   /// configuration for Media3PreviewPlayer
   final Media3PreviewConfig? media3PreviewConfig;
+
+  /// Indicates if there is a next episode available. Used for auto-play UI.
+  final bool hasNextEpisode;
+
+  /// Next episode title for UpNextWidget
+  final String? nextEpisodeTitle;
+
+  /// Next episode thumbnail for UpNextWidget
+  final String? nextEpisodeThumbnail;
+
+  /// Next episode season for UpNextWidget
+  final int? nextEpisodeSeason;
+
+  /// Next episode number for UpNextWidget
+  final int? nextEpisodeNumber;
+
+  /// Callback when the next episode is requested (either manually or automatically at 100%).
+  final VoidCallback? onNextEpisode;
 
   PlaylistMediaItem({
     required this.id,
@@ -174,11 +203,18 @@ class PlaylistMediaItem {
     this.audioTrackLabels,
     this.saveWatchTime,
     this.getDirectLink,
+    this.onScrobble,
     this.mediaItemType = MediaItemType.video,
     this.programs,
     this.segments,
     this.updateWatchTime = true,
     this.media3PreviewConfig,
+    this.hasNextEpisode = false,
+    this.nextEpisodeTitle,
+    this.nextEpisodeThumbnail,
+    this.nextEpisodeSeason,
+    this.nextEpisodeNumber,
+    this.onNextEpisode,
   });
 
   Map<String, dynamic> toMap() {
@@ -289,9 +325,16 @@ class PlaylistMediaItem {
     Map<String, String>? audioTrackLabels,
     GetDirectLinkCallback? getDirectLink,
     SaveWatchTimeSeconds? saveWatchTime,
+    OnScrobbleEvent? onScrobble,
     MediaItemType? mediaItemType,
     bool? updateWatchTime,
     Media3PreviewConfig? media3PreviewConfig,
+    bool? hasNextEpisode,
+    String? nextEpisodeTitle,
+    String? nextEpisodeThumbnail,
+    int? nextEpisodeSeason,
+    int? nextEpisodeNumber,
+    VoidCallback? onNextEpisode,
   }) {
     return PlaylistMediaItem(
       id: id ?? this.id,
@@ -319,11 +362,18 @@ class PlaylistMediaItem {
       audioTrackLabels: audioTrackLabels ?? this.audioTrackLabels,
       getDirectLink: getDirectLink ?? this.getDirectLink,
       saveWatchTime: saveWatchTime ?? this.saveWatchTime,
+      onScrobble: onScrobble ?? this.onScrobble,
       mediaItemType: mediaItemType ?? this.mediaItemType,
       programs: programs ?? this.programs,
       segments: segments ?? this.segments,
       updateWatchTime: updateWatchTime ?? this.updateWatchTime,
       media3PreviewConfig: media3PreviewConfig ?? this.media3PreviewConfig,
+      hasNextEpisode: hasNextEpisode ?? this.hasNextEpisode,
+      nextEpisodeTitle: nextEpisodeTitle ?? this.nextEpisodeTitle,
+      nextEpisodeThumbnail: nextEpisodeThumbnail ?? this.nextEpisodeThumbnail,
+      nextEpisodeSeason: nextEpisodeSeason ?? this.nextEpisodeSeason,
+      nextEpisodeNumber: nextEpisodeNumber ?? this.nextEpisodeNumber,
+      onNextEpisode: onNextEpisode ?? this.onNextEpisode,
     );
   }
 

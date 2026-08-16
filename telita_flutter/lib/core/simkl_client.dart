@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'settings.dart';
@@ -178,10 +179,62 @@ class SimklClient {
         body: jsonEncode(body),
       );
 
-      print('Simkl scrobble status: ${res.statusCode} -> ${res.body}');
+      print('Simkl sync history status: ${res.statusCode} -> ${res.body}');
       return res.statusCode == 200 || res.statusCode == 201;
     } catch (e) {
-      print('Simkl scrobble error: $e');
+      print('Simkl sync history error: $e');
+      return false;
+    }
+  }
+
+  /// Scrobble playback event (start, pause, stop)
+  static Future<bool> scrobbleEvent({
+    required String action, // "start", "pause", "stop"
+    required String type, // "movie" | "series"
+    required String contentId, // e.g. "tt1234567" or "tt0903747:1:2"
+    required double progress, // 0 to 100
+  }) async {
+    final cfg = SettingsService.instance.value;
+    if (!cfg.simklEnabled || cfg.simklAccessToken.isEmpty) {
+      return false;
+    }
+
+    final effClientId = getEffectiveClientId(cfg.simklClientId);
+
+    try {
+      Map<String, dynamic> body = {'progress': progress};
+
+      if (type == 'movie') {
+        final imdbId = contentId.split(':')[0];
+        body['movie'] = {
+          'ids': {'imdb': imdbId},
+        };
+      } else {
+        final parts = contentId.split(':');
+        final imdbId = parts[0];
+        final season = parts.length >= 2 ? int.tryParse(parts[1]) ?? 1 : 1;
+        final episode = parts.length >= 3 ? int.tryParse(parts[2]) ?? 1 : 1;
+
+        body['show'] = {
+          'ids': {'imdb': imdbId},
+        };
+        body['episode'] = {
+          'season': season,
+          'number': episode,
+        };
+      }
+
+      final url = _buildUrl('/scrobble/$action', effClientId);
+      final res = await http.post(
+        Uri.parse(url),
+        headers: _headers(cfg.simklAccessToken, effClientId),
+        body: jsonEncode(body),
+      );
+
+      print('Simkl scrobble $action status: ${res.statusCode} -> ${res.body}');
+      return res.statusCode == 200 || res.statusCode == 201;
+    } catch (e) {
+      print('Simkl scrobble $action error: $e');
       return false;
     }
   }
@@ -287,7 +340,7 @@ class SimklClient {
         print('Simkl Phase 1: Sequential Initial Sync...');
 
         // 1. Fetch Shows
-        final showsUrl = _buildUrl('/sync/shows', effClientId);
+        final showsUrl = _buildUrl('/sync/all-items/shows', effClientId);
         final showsRes = await http.get(Uri.parse(showsUrl), headers: _headers(cfg.simklAccessToken, effClientId));
         if (showsRes.statusCode == 200) {
           final data = jsonDecode(showsRes.body);
@@ -299,7 +352,7 @@ class SimklClient {
         await Future.delayed(const Duration(milliseconds: 150));
 
         // 2. Fetch Movies
-        final moviesUrl = _buildUrl('/sync/movies', effClientId);
+        final moviesUrl = _buildUrl('/sync/all-items/movies', effClientId);
         final moviesRes = await http.get(Uri.parse(moviesUrl), headers: _headers(cfg.simklAccessToken, effClientId));
         if (moviesRes.statusCode == 200) {
           final data = jsonDecode(moviesRes.body);
@@ -311,7 +364,7 @@ class SimklClient {
         await Future.delayed(const Duration(milliseconds: 150));
 
         // 3. Fetch Anime
-        final animeUrl = _buildUrl('/sync/anime', effClientId);
+        final animeUrl = _buildUrl('/sync/all-items/anime', effClientId);
         final animeRes = await http.get(Uri.parse(animeUrl), headers: _headers(cfg.simklAccessToken, effClientId));
         if (animeRes.statusCode == 200) {
           final data = jsonDecode(animeRes.body);
@@ -322,7 +375,7 @@ class SimklClient {
       } else {
         // PHASE 2: Delta Sync (/sync/all-items/?date_from=SAVED_DATE)
         print('Simkl Phase 2: Delta Sync with date_from=$savedActivityDate');
-        final deltaUrl = _buildUrl('/sync/all-items/', effClientId, {'date_from': savedActivityDate});
+        final deltaUrl = _buildUrl('/sync/all-items', effClientId, {'date_from': savedActivityDate});
         final deltaRes = await http.get(Uri.parse(deltaUrl), headers: _headers(cfg.simklAccessToken, effClientId));
 
         // Read existing cache first

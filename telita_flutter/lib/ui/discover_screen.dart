@@ -64,10 +64,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAllCatalogs() async {
+  Future<void> _loadAllCatalogs({bool forceRefresh = false}) async {
     setState(() {
       _loadingCatalogs = true;
-      _catalogs = [];
+      if (forceRefresh) {
+        _catalogs = [];
+      }
     });
 
     await AddonRegistry.instance.init();
@@ -84,7 +86,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
     // Load Simkl Watchlists if connected
     try {
-      final simklWatchlists = await SimklClient.fetchWatchlistCatalogs();
+      final simklWatchlists = await SimklClient.fetchWatchlistCatalogs(forceRefresh: forceRefresh);
       if (simklWatchlists.isNotEmpty) {
         if (simklWatchlists['watching'] != null && simklWatchlists['watching']!.isNotEmpty) {
           loadedGroups.add(CatalogGroup(
@@ -793,9 +795,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           itemCount++;
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 40, left: 24, right: 24),
-          itemCount: itemCount,
+        return RefreshIndicator(
+          onRefresh: () => _loadAllCatalogs(forceRefresh: true),
+          child: ListView.builder(
+            padding: const EdgeInsets.only(bottom: 40, left: 24, right: 24),
+            itemCount: itemCount,
           itemBuilder: (context, index) {
             if (_loadingCatalogs && index == renderItems.length) {
               return const Center(
@@ -926,15 +930,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                 ),
                               )
                             else ...[
-                              Container(
-                                width: 8,
-                                height: 8,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white30,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
+                              // Intentionally left blank to remove the dot
                             ],
                             Text(
                               group.title,
@@ -1040,10 +1036,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               },
             );
           },
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 }
 
 class PosterCard extends StatefulWidget {
@@ -1090,7 +1087,7 @@ class _PosterCardState extends State<PosterCard> {
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutCubic,
       child: Container(
-        width: 140,
+        width: 140 * widget.scale,
         margin: const EdgeInsets.only(right: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

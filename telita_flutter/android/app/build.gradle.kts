@@ -8,7 +8,7 @@ plugins {
 android {
     namespace = "app.telita.player"
     compileSdk = 36
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "26.1.10909125" // Enforced to fix std::__ndk1 linking errors in FVP
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
