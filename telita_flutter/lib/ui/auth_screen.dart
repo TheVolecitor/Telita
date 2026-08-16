@@ -3,6 +3,7 @@ import '../core/auth.dart';
 
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'spinning_logo.dart';
 
@@ -35,6 +36,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   // Windows form state
   bool _isLogin = true;
+  bool _useDeviceAuth = false;
+  static const _channel = MethodChannel('app.telita.core/engine');
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
@@ -42,10 +45,31 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
+    _initAuthFlow();
+  }
+
+  Future<void> _initAuthFlow() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      _isLoading = false;
-    } else {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    bool isTV = false;
+    if (Platform.isAndroid) {
+      try {
+        isTV = await _channel.invokeMethod('isTV') ?? false;
+      } catch (e) {
+        debugPrint('[AuthScreen] Failed to get isTV: $e');
+      }
+    }
+
+    if (_isDisposed || !mounted) return;
+
+    if (isTV) {
+      _useDeviceAuth = true;
       _initDeviceAuth();
+    } else {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -196,7 +220,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
               if (_isLoading)
                 const BrandLoadingIndicator(size: 60)
-              else if (_error.isNotEmpty && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS))
+              else if (_error.isNotEmpty && _useDeviceAuth)
                 Column(
                   children: [
                     Text(_error, style: const TextStyle(color: Colors.redAccent, fontSize: 16)),
@@ -207,7 +231,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                   ],
                 )
-              else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+              else if (!_useDeviceAuth)
                 _buildWindowsForm()
               else
                 _buildQRForm(),
@@ -217,7 +241,7 @@ class _AuthScreenState extends State<AuthScreen> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  autofocus: !(Platform.isWindows || Platform.isLinux || Platform.isMacOS),
+                  autofocus: _useDeviceAuth,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.white,
                     side: const BorderSide(color: Colors.white24),
