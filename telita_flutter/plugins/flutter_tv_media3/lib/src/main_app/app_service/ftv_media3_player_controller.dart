@@ -81,7 +81,7 @@ class FtvMedia3PlayerController {
 
   /// Native Player instance for Windows/Linux (via fvp/video_player)
   VideoPlayerController? _videoPlayerController;
-
+  VoidCallback? _videoPlayerListener;
   VideoPlayerController? get videoPlayerController => _videoPlayerController;
 
   VoidCallback? _sleepTimerExec;
@@ -877,13 +877,35 @@ class FtvMedia3PlayerController {
     );
   }
 
+  Future<void> _safeDisposeController() async {
+    final controller = _videoPlayerController;
+    if (controller != null) {
+      if (_videoPlayerListener != null) {
+        try {
+          controller.removeListener(_videoPlayerListener!);
+        } catch (_) {}
+        _videoPlayerListener = null;
+      }
+      try {
+        await controller.pause();
+      } catch (_) {}
+      try {
+        await controller.setVolume(0.0);
+      } catch (_) {}
+      await Future.delayed(const Duration(milliseconds: 50));
+      try {
+        await controller.dispose();
+      } catch (_) {}
+      if (_videoPlayerController == controller) {
+        _videoPlayerController = null;
+      }
+    }
+  }
+
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
     if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
-      if (_videoPlayerController != null) {
-        await _videoPlayerController!.dispose();
-        _videoPlayerController = null;
-      }
+      await _safeDisposeController();
     }
   }
 
@@ -922,9 +944,7 @@ class FtvMedia3PlayerController {
     );
 
     if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
-      if (_videoPlayerController != null) {
-        await _videoPlayerController!.dispose();
-      }
+      await _safeDisposeController();
       
       final subList = playlist[initialIndex].subtitles;
       String? subFilesStr;
@@ -932,10 +952,13 @@ class FtvMedia3PlayerController {
         subFilesStr = subList.map((s) => s.url).join(';');
       }
 
-      // Register fvp with hardware decoder fallbacks, seekable HTTP, and external subtitle files
+      // Register fvp with hardware decoder fallbacks, seekable HTTP, 50MB buffer, and external subtitle files
       fvp.registerWith(options: {
         'video.decoders': ['D3D11', 'DXVA', 'CUDA', 'mediacodec', 'mediacodec-copy', 'FFmpeg'],
+        'bufferRange': 52428800, // 50 MB frontend buffer
         'player': {
+          'bufferRange': '52428800',
+          'avio.buffer_size': '52428800',
           'avformat.seekable': '1',
           'avio.seekable': '1',
           'avformat.fflags': '+fastseek',
@@ -948,8 +971,10 @@ class FtvMedia3PlayerController {
         httpHeaders: playlist[initialIndex].headers ?? const <String, String>{},
       );
 
-      _videoPlayerController!.addListener(() {
-        final val = _videoPlayerController!.value;
+      _videoPlayerListener = () {
+        final ctrl = _videoPlayerController;
+        if (ctrl == null) return;
+        final val = ctrl.value;
         if (val.isInitialized) {
           final newPos = val.position.inSeconds;
           final newDur = val.duration.inSeconds;
@@ -966,7 +991,8 @@ class FtvMedia3PlayerController {
             ));
           }
         }
-      });
+      };
+      _videoPlayerController!.addListener(_videoPlayerListener!);
 
       await _videoPlayerController!.initialize();
       await _videoPlayerController!.play();
@@ -1278,9 +1304,7 @@ class FtvMedia3PlayerController {
           'position_ms': _playbackState.position! * 1000,
         }));
       }
-      await _videoPlayerController!.pause();
-      await _videoPlayerController!.dispose();
-      _videoPlayerController = null;
+      await _safeDisposeController();
       return;
     }
     await _invokeMethodGuarded<void>(_activityChannel, 'stop');

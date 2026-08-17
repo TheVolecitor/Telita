@@ -630,6 +630,18 @@ class _AppContainerState extends State<AppContainer> {
                     });
                   },
                   onResume: (entry) {
+                    final baseId = entry.id.split(':')[0];
+                    final metaItem = MetaPreview(
+                      id: baseId,
+                      type: entry.type,
+                      name: entry.name,
+                      poster: entry.poster,
+                    );
+                    setState(() {
+                      _selectedDetailItem = metaItem;
+                      _selectedDetailType = entry.type;
+                      _selectedInitialVideoId = entry.id;
+                    });
                     _playStream(
                       context,
                       entry.streamUrl,
@@ -638,6 +650,7 @@ class _AppContainerState extends State<AppContainer> {
                       initialPosition: entry.timestamp,
                       name: entry.name,
                       poster: entry.poster,
+                      item: metaItem,
                     );
                   },
                 ),

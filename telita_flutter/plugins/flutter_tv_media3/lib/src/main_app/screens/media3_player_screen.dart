@@ -14,6 +14,8 @@ import 'package:lottie/lottie.dart';
 import 'package:http/http.dart' as http;
 import '../../overlay/screens/components/widgets/brand_loading_indicator.dart';
 
+enum VideoFitOption { fit, fill, stretch }
+
 class _AppCaption {
   final Duration start;
   final Duration end;
@@ -370,6 +372,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   StreamSubscription<PlayerState>? _styleSubscription;
   bool _isInitialized = false;
   bool _isFullscreen = false;
+  VideoFitOption _currentFit = VideoFitOption.fit;
   bool _defaultAudioSelected = false;
   bool _wasPlaying = false;
   bool _videoCompleted = false;
@@ -426,14 +429,9 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         setState(() => _subtitleStyle = state.subtitleStyle);
       }
     });
-    _historyTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      _syncWatchHistory,
-    );
   }
 
-  void _syncWatchHistory([Timer? _]) {
-    if (!mounted) return;
+  void _syncWatchHistory() {
     final value = widget.controller.value;
     if (!value.isInitialized || value.duration == Duration.zero) return;
 
@@ -813,12 +811,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                 child: RepaintBoundary(
                   child:
                       _isInitialized
-                          ? Center(
-                            child: AspectRatio(
-                              aspectRatio: widget.controller.value.aspectRatio,
-                              child: VideoPlayer(widget.controller),
-                            ),
-                          )
+                          ? _buildVideo()
                           : const Center(
                             child: BrandLoadingIndicator(
                               size: 72,
@@ -1185,6 +1178,13 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     onActivity: _onMouseActivity,
                     isFullscreen: _isFullscreen,
                     onToggleFullscreen: _toggleFullscreen,
+                    currentFit: _currentFit,
+                    onToggleFit: () {
+                      setState(() {
+                        _currentFit = VideoFitOption.values[
+                            (_currentFit.index + 1) % VideoFitOption.values.length];
+                      });
+                    },
                     playButtonFocusNode: _playButtonFocusNode,
                     onBackToPlayer: () => _rootFocusNode.requestFocus(),
                     externalSubtitles:
@@ -1214,6 +1214,43 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         ),
       ),
     );
+  }
+
+  Widget _buildVideo() {
+    final player = VideoPlayer(widget.controller);
+    final size = widget.controller.value.size;
+
+    switch (_currentFit) {
+      case VideoFitOption.fit:
+        return Center(
+          child: AspectRatio(
+            aspectRatio: widget.controller.value.aspectRatio,
+            child: player,
+          ),
+        );
+      case VideoFitOption.fill:
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: size.width == 0 ? 1 : size.width,
+              height: size.height == 0 ? 1 : size.height,
+              child: player,
+            ),
+          ),
+        );
+      case VideoFitOption.stretch:
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.fill,
+            child: SizedBox(
+              width: size.width == 0 ? 1 : size.width,
+              height: size.height == 0 ? 1 : size.height,
+              child: player,
+            ),
+          ),
+        );
+    }
   }
 }
 
@@ -1553,6 +1590,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onActivity;
   final bool isFullscreen;
   final VoidCallback onToggleFullscreen;
+  final VideoFitOption currentFit;
+  final VoidCallback onToggleFit;
   final List<MediaItemSubtitle> externalSubtitles;
   final int activeExternalSubIndex;
   final Function(int index, String url) onSelectExternalSubtitle;
@@ -1569,6 +1608,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onActivity,
     required this.isFullscreen,
     required this.onToggleFullscreen,
+    required this.currentFit,
+    required this.onToggleFit,
     this.externalSubtitles = const [],
     this.activeExternalSubIndex = -1,
     required this.onSelectExternalSubtitle,
@@ -1735,6 +1776,14 @@ class _ControlsOverlay extends StatelessWidget {
 
                         FocusTraversalOrder(
                           order: const NumericFocusOrder(6),
+                          child: FitButton(
+                            onActivity: onActivity,
+                            currentFit: currentFit,
+                            onToggle: onToggleFit,
+                          ),
+                        ),
+                        FocusTraversalOrder(
+                          order: const NumericFocusOrder(7),
                           child: FullscreenButton(
                             onActivity: onActivity,
                             isFullscreen: isFullscreen,
@@ -1742,7 +1791,7 @@ class _ControlsOverlay extends StatelessWidget {
                           ),
                         ),
                         FocusTraversalOrder(
-                          order: const NumericFocusOrder(7),
+                          order: const NumericFocusOrder(8),
                           child: PlayerMoreMenuButton(
                             controller: controller,
                             playlist: playlist,
@@ -2850,6 +2899,48 @@ class FullscreenButton extends StatelessWidget {
     return _TvIconButton(
       icon: isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
       tooltip: isFullscreen ? 'Exit Fullscreen' : 'Fullscreen',
+      onPressed: () {
+        onActivity();
+        onToggle();
+      },
+    );
+  }
+}
+
+class FitButton extends StatelessWidget {
+  final VoidCallback onActivity;
+  final VideoFitOption currentFit;
+  final VoidCallback onToggle;
+
+  const FitButton({
+    super.key,
+    required this.onActivity,
+    required this.currentFit,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icon;
+    String tooltip;
+    switch (currentFit) {
+      case VideoFitOption.fit:
+        icon = Icons.aspect_ratio;
+        tooltip = 'Fit (Letterbox)';
+        break;
+      case VideoFitOption.fill:
+        icon = Icons.crop_free;
+        tooltip = 'Fill (Crop to Fit)';
+        break;
+      case VideoFitOption.stretch:
+        icon = Icons.settings_overscan;
+        tooltip = 'Stretch (Distort)';
+        break;
+    }
+    
+    return _TvIconButton(
+      icon: icon,
+      tooltip: tooltip,
       onPressed: () {
         onActivity();
         onToggle();
