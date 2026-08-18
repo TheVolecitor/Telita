@@ -1,0 +1,53 @@
+name: macOS Build
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23' # Use a stable go version or read from go.mod
+
+      - name: Build Go Core (macOS)
+        run: |
+          cd core
+          GOOS=darwin GOARCH=arm64 go build -o libcore .
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'master'
+
+      - name: Build macOS Flutter App
+        run: |
+          cd telita_flutter
+          flutter pub get
+          flutter build macos --release
+
+      - name: Bundle Core into App
+        run: |
+          cd telita_flutter
+          mkdir -p build/macos/Build/Products/Release/telita_flutter.app/Contents/Resources
+          cp ../core/libcore build/macos/Build/Products/Release/telita_flutter.app/Contents/Resources/
+          chmod +x build/macos/Build/Products/Release/telita_flutter.app/Contents/Resources/libcore
+
+      - name: Compress App Bundle
+        run: |
+          cd telita_flutter/build/macos/Build/Products/Release/
+          zip -r telita-macos.zip telita_flutter.app
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: telita-macos
+          path: telita_flutter/build/macos/Build/Products/Release/telita-macos.zip
