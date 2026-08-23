@@ -258,8 +258,8 @@ class _TelitaAppState extends State<TelitaApp> with WindowListener {
             ),
             fontFamily: 'Inter',
             useMaterial3: true,
-            pageTransitionsTheme: const PageTransitionsTheme(
-              builders: {
+            pageTransitionsTheme: PageTransitionsTheme(
+              builders: <TargetPlatform, PageTransitionsBuilder>{
                 TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
                 TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
                 TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
