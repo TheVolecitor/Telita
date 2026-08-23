@@ -2,7 +2,7 @@
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 AppId={{2A9559F0-555D-41D7-8A7B-9ED53A9EE12D}
 AppName=Telita
-AppVersion=1.0.1-dev3
+AppVersion=1.0.1-dev4
 AppPublisher=Telita
 DefaultDirName={autopf}\Telita
 DisableProgramGroupPage=yes

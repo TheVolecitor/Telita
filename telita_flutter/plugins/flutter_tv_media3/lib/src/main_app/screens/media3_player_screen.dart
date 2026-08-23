@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../flutter_tv_media3.dart';
 import 'dart:io';
 import '../../overlay/media_ui_service/media3_ui_controller.dart';
@@ -503,6 +504,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
       if (widget.controller.value.isPlaying != _wasPlaying) {
         _wasPlaying = widget.controller.value.isPlaying;
+        if (_wasPlaying) {
+          WakelockPlus.enable();
+        } else {
+          WakelockPlus.disable();
+        }
         _sendScrobbleEvent(_wasPlaying ? 'start' : 'pause');
       }
     }
@@ -666,6 +672,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
   @override
   void dispose() {
+    WakelockPlus.disable();
     if (_isFullscreen) {
       windowManager.setFullScreen(false);
       _isFullscreen = false;

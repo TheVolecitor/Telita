@@ -25,6 +25,7 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   fvp: ^0.37.3
   video_player: ^2.11.1
+  wakelock_plus: ^1.1.4
   flutter_svg: ^2.0.10+1
   flutter_colorpicker: ^1.1.0
   file_picker: ^8.0.0+1
