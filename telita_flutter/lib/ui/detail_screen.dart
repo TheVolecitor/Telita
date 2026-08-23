@@ -133,7 +133,13 @@ class _DetailScreenState extends State<DetailScreen> {
             }
           }
         }
-        targetVid ??= videos[0];
+          if (targetVid == null) {
+            try {
+              targetVid = videos.firstWhere((v) => v.season != null && v.season! > 0);
+            } catch (_) {
+              targetVid = videos[0];
+            }
+          }
 
         setState(() {
           if (targetVid!.season != null) _selectedSeason = targetVid.season!;
