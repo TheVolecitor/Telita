@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_tv_media3/flutter_tv_media3.dart';
 import '../bloc/overlay_ui_bloc.dart';
 import '../media_ui_service/media3_ui_controller.dart';
@@ -442,7 +443,7 @@ class _OverlayScreenState extends State<OverlayScreen> {
         playerState.loadingStatus == null &&
         playerState.lastError == null;
 
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) return false;
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) return false;
 
     return playerState.videoTracks.isEmpty && isPlayerStable;
   }

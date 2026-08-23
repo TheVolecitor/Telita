@@ -99,7 +99,7 @@ class _SimklSettingsScreenState extends State<SimklSettingsScreen> {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildToggle(
                   label: 'Enable Simkl Sync',
                   desc: 'Automatically scrobble watched movies & TV show episodes to your Simkl account',
@@ -219,7 +219,7 @@ class _SimklSettingsScreenState extends State<SimklSettingsScreen> {
                     ),
                   ],
                 ],
-              ],
+              ]),
             );
           },
         ),

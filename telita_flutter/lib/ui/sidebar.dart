@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum Screen { home, addons, settings }
+enum Screen { home, addons, downloads, settings }
 
 class Sidebar extends StatefulWidget {
   final Screen currentScreen;
@@ -156,6 +156,8 @@ class _SidebarState extends State<Sidebar> {
                     _buildNavItem(context, Screen.home, 'Discover', Icons.explore_outlined, Icons.explore, focusNode: _discoverFocusNode),
                     const SizedBox(height: 8),
                     _buildNavItem(context, Screen.addons, 'Addons', Icons.extension_outlined, Icons.extension),
+                    const SizedBox(height: 8),
+                    _buildNavItem(context, Screen.downloads, 'Downloads', Icons.download_for_offline_outlined, Icons.download_for_offline),
                     const SizedBox(height: 8),
                     _buildNavItem(context, Screen.settings, 'Settings', Icons.settings_outlined, Icons.settings),
 

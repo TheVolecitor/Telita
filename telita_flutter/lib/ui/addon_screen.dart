@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'web_safe_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/addon_client.dart';
 import 'spinning_logo.dart';
@@ -231,9 +231,14 @@ class _AddonScreenState extends State<AddonScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Header Controls
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 16.0,
+                  runSpacing: 16.0,
+                  children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -255,8 +260,6 @@ class _AddonScreenState extends State<AddonScreen> {
                       ),
                     ],
                   ),
-                  Row(
-                    children: [
                       // Add addon button
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
@@ -275,9 +278,8 @@ class _AddonScreenState extends State<AddonScreen> {
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
-                    ],
-                  ),
                 ],
+              ),
               ),
 
               const SizedBox(height: 32),
@@ -399,7 +401,7 @@ class _AddonScreenState extends State<AddonScreen> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: addon.manifest.logo != null
-                      ? CachedNetworkImage(
+                      ? WebSafeImage(
                           imageUrl: addon.manifest.logo!,
                           fit: BoxFit.contain,
                           memCacheWidth: 150,

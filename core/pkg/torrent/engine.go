@@ -75,7 +75,7 @@ func (e *Engine) StreamMagnet(magnetURI string) (string, error) {
 
 	// The simplest way to handle streaming is to use a global HTTP server in the engine
 	// Since we only stream one thing at a time for now:
-	streamURL := fmt.Sprintf("http://localhost:8080/stream?hash=%s", t.InfoHash().HexString())
+	streamURL := fmt.Sprintf("http://127.0.0.1:12021/stream?hash=%s", t.InfoHash().HexString())
 	return streamURL, nil
 }
 
@@ -126,15 +126,10 @@ func (e *Engine) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, largestFile.DisplayPath(), time.Time{}, reader)
 }
 
-// StartServer starts the HTTP streaming server on port 8080
+// StartServer registers the HTTP streaming server on DefaultServeMux
 func (e *Engine) StartServer() {
 	http.HandleFunc("/stream", e.ServeHTTP)
-	log.Println("Torrent Streaming Server running on http://localhost:8080")
-	go func() {
-		if err := http.ListenAndServe(":8080", nil); err != nil {
-			log.Printf("Streaming server error: %v\n", err)
-		}
-	}()
+	log.Println("Torrent Streaming endpoint registered at /stream")
 }
 
 // DropAllTorrents drops all currently active torrents to free up memory and bandwidth.

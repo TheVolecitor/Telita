@@ -1,4 +1,7 @@
+import 'dart:ui';
 import 'dart:async';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
@@ -9,7 +12,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../overlay/bloc/overlay_ui_bloc.dart';
 import 'package:video_player/video_player.dart';
 import 'package:fvp/fvp.dart';
-import 'package:flutter_acrylic/flutter_acrylic.dart' as acrylic;
+import 'package:window_manager/window_manager.dart';
 import 'package:lottie/lottie.dart';
 import 'package:http/http.dart' as http;
 import '../../overlay/screens/components/widgets/brand_loading_indicator.dart';
@@ -96,6 +99,12 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
   bool isClose = false;
   bool _loadingTimedOut = false;
   Timer? _loadingTimeoutTimer;
+  // For local files: a plain VideoPlayerController that bypasses openNativePlayer
+  VideoPlayerController? _localController;
+  // For streams: a plain VideoPlayerController that bypasses openNativePlayer
+  VideoPlayerController? _streamController;
+  
+  VideoPlayerController? get _activeController => _localController ?? _streamController;
 
   @override
   void initState() {
@@ -106,7 +115,7 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       DeviceOrientation.landscapeRight,
       DeviceOrientation.landscapeLeft,
     ]);
-    if ((Platform.isWindows ||
+    if (!kIsWeb && (Platform.isWindows ||
         Platform.isLinux ||
         Platform.isMacOS ||
         Platform.isAndroid ||
@@ -119,48 +128,60 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
       });
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!(Platform.isWindows ||
+      if (!kIsWeb && !(Platform.isWindows ||
           Platform.isLinux ||
           Platform.isMacOS ||
           Platform.isAndroid ||
           Platform.isIOS)) {
         await Future.delayed(const Duration(milliseconds: 600));
       }
-      try {
-        if ((Platform.isWindows ||
-            Platform.isLinux ||
-            Platform.isMacOS ||
-            Platform.isAndroid ||
-            Platform.isIOS)) {
-          _overlayController = Media3UiController();
-          _overlayController!.initForWindows(
-            widget.playlist,
-            widget.initialIndex,
-          );
-          setState(() {});
-        }
-        await _controller.openNativePlayer(
-          playlist: widget.playlist,
-          initialIndex: widget.initialIndex,
-        );
-      } catch (e) {
-        if (mounted) {
-          _showErrorSnackBar(context, e.toString());
-          if ((Platform.isWindows ||
-              Platform.isLinux ||
-              Platform.isMacOS ||
-              Platform.isAndroid ||
-              Platform.isIOS)) {
-            setState(() => _loadingTimedOut = true);
+
+      // ── Local file: bypass openNativePlayer entirely ──────────────────────
+      final itemUrl = widget.playlist.isNotEmpty
+          ? widget.playlist[widget.initialIndex].url
+          : '';
+      final bool isLocal = itemUrl.startsWith('file://') ||
+          itemUrl.startsWith('/') ||
+          (itemUrl.length > 2 && itemUrl[1] == ':');
+
+      if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS ||
+              Platform.isAndroid || Platform.isIOS)) {
+        _loadingTimeoutTimer?.cancel(); // no timeout needed for local/FVP files
+        String nativePath = itemUrl;
+        
+        VideoPlayerController ctrl;
+        if (isLocal) {
+          if (nativePath.startsWith('file://')) {
+            nativePath = Uri.parse(nativePath).toFilePath();
           }
+          ctrl = VideoPlayerController.file(File(nativePath));
+          _localController = ctrl;
+        } else {
+          ctrl = VideoPlayerController.networkUrl(Uri.parse(nativePath));
+          _streamController = ctrl;
         }
+        
+        ctrl.addListener(() { if (mounted) setState(() {}); });
+        try {
+          await ctrl.initialize();
+          if (mounted) {
+            setState(() {});
+            await ctrl.play();
+          }
+        } catch (e) {
+          if (mounted) _showErrorSnackBar(context, e.toString());
+        }
+        return;
       }
+
     });
   }
 
   @override
   void dispose() {
     _loadingTimeoutTimer?.cancel();
+    _localController?.dispose();
+    _streamController?.dispose();
     _controller.closePlayer();
     WidgetsBinding.instance.removeObserver(this);
     SystemChrome.setPreferredOrientations([
@@ -188,6 +209,43 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
     }
   }
 
+  Future<bool> _onWillPop() async {
+    if (isClose) return true;
+    isClose = true;
+    
+    debugPrint('[_onWillPop] called, activeController=${_activeController != null}, index=${widget.initialIndex}');
+    if (_activeController != null && widget.initialIndex >= 0 && widget.initialIndex < widget.playlist.length) {
+      final item = widget.playlist[widget.initialIndex];
+      debugPrint('[_onWillPop] item has saveWatchTime: ${item.saveWatchTime != null}');
+      if (item.saveWatchTime != null) {
+        final val = _activeController!.value;
+        debugPrint('[_onWillPop] isInitialized: ${val.isInitialized}, duration: ${val.duration.inSeconds}, pos: ${val.position.inSeconds}');
+        if (val.isInitialized) {
+          final dur = val.duration.inSeconds;
+          int pos = val.position.inSeconds;
+          if (dur > 0) {
+            if (pos > dur) pos = dur;
+            try {
+              debugPrint('[_onWillPop] SAVING WATCH TIME pos=$pos dur=$dur');
+              await item.saveWatchTime!(
+                id: item.id,
+                duration: dur,
+                position: pos,
+                playIndex: widget.initialIndex,
+              );
+              debugPrint('[_onWillPop] SUCCESS saving watch time');
+            } catch (e) {
+              debugPrint('Failed to save watch time: $e');
+            }
+          }
+        }
+      }
+    }
+
+    await _controller.closePlayer();
+    return true;
+  }
+
   void _showErrorSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -210,57 +268,51 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
 
   @override
   Widget build(BuildContext context) {
-    // On Windows, MPV renders its own full-screen overlay with the Lua OSD.
-    // We just need a black background behind it while it loads.
-    if ((Platform.isWindows ||
-        Platform.isLinux ||
-        Platform.isMacOS ||
-        Platform.isAndroid ||
-        Platform.isIOS)) {
-      final controller = FtvMedia3PlayerController().videoPlayerController;
-      if (controller == null) {
-        return Scaffold(
+    final controller = _activeController;
+    if (controller == null) {
+      return WillPopScope(
+        onWillPop: _onWillPop,
+        child: Scaffold(
           backgroundColor: Colors.black,
           body: Stack(
             children: [
               Center(
-                child:
-                    _loadingTimedOut
-                        ? Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.white54,
-                              size: 48,
+                child: _loadingTimedOut
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.white54,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Player failed to load',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
                             ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Player failed to load',
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 16,
-                              ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'MPV did not initialize in time.',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: 13,
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'MPV did not initialize in time.',
-                              style: TextStyle(
-                                color: Colors.white38,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            ElevatedButton(
-                              onPressed: () => Navigator.of(context).maybePop(),
-                              child: const Text('Go Back'),
-                            ),
-                          ],
-                        )
-                        : const BrandLoadingIndicator(
-                          size: 72,
-                          color: AppTheme.fullFocusColor,
-                        ),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            child: const Text('Go Back'),
+                          ),
+                        ],
+                      )
+                    : const BrandLoadingIndicator(
+                        size: 72,
+                        color: AppTheme.fullFocusColor,
+                      ),
               ),
               Positioned(
                 top: 16,
@@ -275,9 +327,13 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
               ),
             ],
           ),
-        );
-      }
-      return Scaffold(
+        ),
+      );
+    }
+
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
         backgroundColor: Colors.black,
         body: _WindowsDesktopPlayer(
           controller: controller,
@@ -286,55 +342,10 @@ class _Media3PlayerScreenState extends State<Media3PlayerScreen>
           onBack: () => Navigator.of(context).maybePop(),
           overlayController: _overlayController,
         ),
-      );
-    }
-
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: StreamBuilder<PlayerState>(
-        stream: _controller.playerStateStream,
-        builder: (context, snapshot) {
-          return Stack(
-            alignment: Alignment.center,
-            children: [
-              if (widget.placeholderWidget != null) widget.placeholderWidget!,
-              Center(
-                child:
-                    widget.playerLabel ??
-                    Text(
-                      'FTVMedia3',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.titleLarge?.merge(AppTheme.boldTextStyle),
-                    ),
-              ),
-              Positioned(
-                bottom: 50,
-                left: 200,
-                right: 200,
-                child: Column(
-                  children: [
-                    Text(
-                      OverlayLocalizations.get('loading'),
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.titleMedium?.merge(
-                        AppTheme.extraLightTextStyle,
-                      ),
-                    ),
-                    LinearProgressIndicator(
-                      color: AppTheme.fullFocusColor,
-                      backgroundColor: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
       ),
     );
   }
+
 }
 
 // ---------------------------------------------------------------------------
@@ -364,6 +375,7 @@ class _WindowsDesktopPlayer extends StatefulWidget {
 class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   bool _controlsVisible = true;
   bool _controlsMounted = true;
+  bool _isDialogOpen = false;
   Timer? _hideTimer;
   Timer? _unmountTimer;
   Timer? _historyTimer;
@@ -381,6 +393,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
 
   List<_AppCaption> _externalCaptions = [];
   int _activeExternalSubIndex = -1;
+  double _subtitleDelay = 0.0;
 
   Future<void> _loadExternalSubtitle(int index, String url) async {
     setState(() {
@@ -388,7 +401,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       _externalCaptions = [];
     });
     try {
-      widget.controller.setSubtitleTracks([]);
+      if (!kIsWeb) widget.controller.setSubtitleTracks([]);
     } catch (_) {}
 
     try {
@@ -410,7 +423,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       _externalCaptions = [];
     });
     try {
-      widget.controller.setSubtitleTracks([]);
+      if (!kIsWeb) widget.controller.setSubtitleTracks([]);
     } catch (_) {}
   }
 
@@ -429,30 +442,36 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         setState(() => _subtitleStyle = state.subtitleStyle);
       }
     });
-  }
 
-  void _syncWatchHistory() {
-    final value = widget.controller.value;
-    if (!value.isInitialized || value.duration == Duration.zero) return;
+    _historyTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && widget.controller.value.isPlaying) {
+        _sendScrobbleEvent('start');
+      }
+    });
 
-    final positionSec = value.position.inSeconds;
-    final durationSec = value.duration.inSeconds;
-
-    if (durationSec == 0 || positionSec <= 5) return;
-
-    if (widget.initialIndex >= 0 &&
-        widget.initialIndex < widget.playlist.length) {
-      final item = widget.playlist[widget.initialIndex];
-      if (item.saveWatchTime != null) {
-        item.saveWatchTime!(
-          id: item.id,
-          duration: durationSec,
-          position: positionSec > durationSec ? durationSec : positionSec,
-          playIndex: widget.initialIndex,
-        );
+    if (_isInitialized && !_defaultAudioSelected) {
+      _defaultAudioSelected = true;
+      _selectDefaultAudioTrack();
+      _selectDefaultSubtitleTrack();
+      
+      final item =
+          widget.playlist.isNotEmpty &&
+                  widget.initialIndex >= 0 &&
+                  widget.initialIndex < widget.playlist.length
+              ? widget.playlist[widget.initialIndex]
+              : null;
+      final start = item?.startPosition;
+      if (start != null && start > 5) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted) {
+            widget.controller.seekTo(Duration(seconds: start));
+          }
+        });
       }
     }
   }
+
+
 
   void _checkInit() {
     if (mounted) {
@@ -508,12 +527,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   void _selectDefaultAudioTrack() {
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!mounted) return;
-      final mediaInfo = widget.controller.getMediaInfo();
-      final audioTracks = mediaInfo?.audio ?? [];
+      final mediaInfo = kIsWeb ? null : widget.controller.getMediaInfo();
+      final List<dynamic> audioTracks = kIsWeb ? <dynamic>[] : ((mediaInfo as dynamic)?.audio ?? <dynamic>[]);
       if (audioTracks.isEmpty) {
         // Still no tracks — just pick first
         try {
-          widget.controller.setAudioTracks([0]);
+          if (!kIsWeb) widget.controller.setAudioTracks([0]);
         } catch (_) {}
         return;
       }
@@ -533,7 +552,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
             break;
           }
         }
-        widget.controller.setAudioTracks([targetPosition]);
+        if (!kIsWeb) widget.controller.setAudioTracks([targetPosition]);
       } catch (_) {}
     });
   }
@@ -543,12 +562,14 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       if (!mounted) return;
 
       final playerSettings =
-          widget.overlayController?.playerState.playerSettings;
+          widget.overlayController?.playerState.playerSettings ??
+          FtvMedia3PlayerController().playerState.playerSettings;
       final subtitleEnabled = playerSettings?.forcedAutoEnable ?? true;
 
       if (!subtitleEnabled) {
+        print('[SUBTITLE-DEBUG] Subtitles disabled by user settings.');
         try {
-          widget.controller.setSubtitleTracks([]);
+          if (!kIsWeb) widget.controller.setSubtitleTracks([]);
         } catch (_) {}
         _disableExternalSubtitle();
         return;
@@ -561,21 +582,29 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               ? preferredLangs.first.toLowerCase()
               : 'eng';
 
-      // 1. PRIORITIZE IN-STREAM CONTAINER SUBTITLES FIRST
-      final mediaInfo = widget.controller.getMediaInfo();
-      final subTracks = mediaInfo?.subtitle ?? [];
+      final searchPrefLang = _getLanguageName(prefLang).toLowerCase();
+      print('[SUBTITLE-DEBUG] Initializing Subtitle Auto-Select.');
+      print('[SUBTITLE-DEBUG] User preferred language: $prefLang -> Mapped to: $searchPrefLang');
 
+      // 1. PRIORITIZE IN-STREAM CONTAINER SUBTITLES FIRST
+      final mediaInfo = kIsWeb ? null : widget.controller.getMediaInfo();
+      final List<dynamic> subTracks = kIsWeb ? <dynamic>[] : ((mediaInfo as dynamic)?.subtitle ?? <dynamic>[]);
+
+      print('[SUBTITLE-DEBUG] Analyzing Embedded Subtitles. Count: ${subTracks.length}');
       int matchedInStreamIndex = -1;
       for (int i = 0; i < subTracks.length; i++) {
-        final lang = (subTracks[i].metadata['language'] ?? '').toLowerCase();
+        final rawLang = (subTracks[i].metadata['language'] ?? '').toString();
         final title = (subTracks[i].metadata['title'] ?? '').toLowerCase();
-
-        if (lang == prefLang ||
-            lang.startsWith(prefLang) ||
-            title.contains(prefLang) ||
-            (prefLang == 'eng' &&
-                (lang == 'en' || lang == 'english' || title.contains('eng')))) {
+        
+        final mappedLang = _getLanguageName(rawLang).toLowerCase();
+        print('[SUBTITLE-DEBUG]   -> Embedded Track $i: rawLang="$rawLang", mappedLang="$mappedLang", title="$title"');
+        
+        if (mappedLang == searchPrefLang ||
+            mappedLang.startsWith(searchPrefLang) ||
+            (searchPrefLang == 'english' && (mappedLang == 'english' || mappedLang == 'en')) ||
+            (prefLang == 'eng' && (mappedLang == 'english' || mappedLang == 'en' || title.contains('eng')))) {
           matchedInStreamIndex = i;
+          print('[SUBTITLE-DEBUG]   => MATCH FOUND! Selected Embedded Track $i');
           break;
         }
       }
@@ -583,10 +612,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       if (matchedInStreamIndex != -1) {
         _disableExternalSubtitle();
         try {
-          widget.controller.setSubtitleTracks([matchedInStreamIndex]);
+          if (!kIsWeb) widget.controller.setSubtitleTracks([matchedInStreamIndex]);
         } catch (_) {}
         return;
       }
+
+      print('[SUBTITLE-DEBUG] No matching Embedded Track found. Proceeding to External Addons.');
 
       // 2. IF NO IN-STREAM SUBTITLE FOUND FOR PREFERRED LANG, CHECK EXTERNAL ADDON SUBTITLES
       final item =
@@ -597,28 +628,37 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
               : null;
       final externalSubs = item?.subtitles ?? [];
 
+      print('[SUBTITLE-DEBUG] Analyzing External Addons Subtitles. Count: ${externalSubs.length}');
       if (externalSubs.isNotEmpty && _activeExternalSubIndex == -1) {
         int matchedExtIndex = -1;
         for (int i = 0; i < externalSubs.length; i++) {
-          final lang = externalSubs[i].language.toLowerCase();
-          if (lang == prefLang ||
-              lang.startsWith(prefLang) ||
-              (prefLang == 'eng' && (lang == 'en' || lang == 'english'))) {
+          final mappedLang = _getLanguageName(externalSubs[i].language).toLowerCase();
+          print('[SUBTITLE-DEBUG]   -> External Track $i: rawLang="${externalSubs[i].language}", mappedLang="$mappedLang"');
+          
+          if (mappedLang == searchPrefLang ||
+              mappedLang.startsWith(searchPrefLang) ||
+              (searchPrefLang == 'english' && (mappedLang == 'english' || mappedLang == 'en')) ||
+              (prefLang == 'eng' && (mappedLang == 'english' || mappedLang == 'en'))) {
             matchedExtIndex = i;
+            print('[SUBTITLE-DEBUG]   => MATCH FOUND! Selected External Track $i');
             break;
           }
         }
 
         final targetIdx = matchedExtIndex != -1 ? matchedExtIndex : 0;
+        if (matchedExtIndex == -1) {
+          print('[SUBTITLE-DEBUG]   => No match found in External Addons. Falling back to first external track (Index 0).');
+        }
         _loadExternalSubtitle(targetIdx, externalSubs[targetIdx].url);
         return;
       }
 
       // 3. FALLBACK: IF NO MATCHING LANG IN-STREAM OR EXTERNAL, PICK FIRST AVAILABLE IN-STREAM TRACK
+      print('[SUBTITLE-DEBUG] No matching language found anywhere. Falling back to first Embedded track (if available).');
       if (subTracks.isNotEmpty) {
         _disableExternalSubtitle();
         try {
-          widget.controller.setSubtitleTracks([0]);
+          if (!kIsWeb) widget.controller.setSubtitleTracks([0]);
         } catch (_) {}
       }
     });
@@ -627,13 +667,12 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   @override
   void dispose() {
     if (_isFullscreen) {
-      acrylic.Window.exitFullscreen();
+      windowManager.setFullScreen(false);
       _isFullscreen = false;
     }
     _rootFocusNode.dispose();
     _playButtonFocusNode.dispose();
     _sendScrobbleEvent('stop');
-    _syncWatchHistory();
     widget.controller.removeListener(_checkInit);
     _hideTimer?.cancel();
     _unmountTimer?.cancel();
@@ -655,7 +694,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
   }
 
   void _scheduleHide() {
-    if (!widget.controller.value.isPlaying) return; // keep visible when paused
+    if (!widget.controller.value.isPlaying || _isDialogOpen) return; // keep visible when paused or dialog open
     _hideTimer = Timer(_hideAfter, () {
       if (mounted) {
         setState(() => _controlsVisible = false);
@@ -677,11 +716,11 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     setState(() {
       _isFullscreen = !_isFullscreen;
     });
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       if (_isFullscreen) {
-        acrylic.Window.enterFullscreen();
+        windowManager.setFullScreen(true);
       } else {
-        acrylic.Window.exitFullscreen();
+        windowManager.setFullScreen(false);
       }
     } else {
       if (_isFullscreen) {
@@ -713,11 +752,15 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
     }
     _onMouseActivity();
 
-    // hasPrimaryFocus = ONLY this exact node is focused (no child button is focused).
-    // If a child button has focus, hasPrimaryFocus is false — let Flutter traversal
-    // and the child's own onKeyEvent handle the event.
+    // Global overrides (even if a button has focus)
+    if (event.logicalKey == LogicalKeyboardKey.keyF) {
+      if (event is KeyDownEvent) {
+        _toggleFullscreen();
+      }
+      return KeyEventResult.handled;
+    }
+
     if (!node.hasPrimaryFocus) {
-      // Only intercept global Back/Escape — everything else propagates to the focused child.
       if (event.logicalKey == LogicalKeyboardKey.escape ||
           event.logicalKey == LogicalKeyboardKey.goBack) {
         if (_isFullscreen) {
@@ -730,7 +773,6 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
       return KeyEventResult.ignored;
     }
 
-    // Root has primary focus — player surface is in control.
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
       case LogicalKeyboardKey.select:
@@ -739,32 +781,23 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
         _togglePlay();
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowRight:
-        if (_controlsVisible) {
-          // Controls visible: move focus rightward in controls
-          FocusScope.of(context).focusInDirection(TraversalDirection.right);
-        } else {
-          _seek(const Duration(seconds: 10));
-        }
+        _seek(const Duration(seconds: 10));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowLeft:
-        if (_controlsVisible) {
-          FocusScope.of(context).focusInDirection(TraversalDirection.left);
-        } else {
-          _seek(const Duration(seconds: -10));
-        }
+        _seek(const Duration(seconds: -10));
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowDown:
         // Move focus down into the controls bar (play button).
         if (_controlsVisible && _controlsMounted) {
           _playButtonFocusNode.requestFocus();
-        } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        } else if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
           widget.controller.setVolume(
             (widget.controller.value.volume - 0.05).clamp(0.0, 1.0),
           );
         }
         return KeyEventResult.handled;
       case LogicalKeyboardKey.arrowUp:
-        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
           widget.controller.setVolume(
             (widget.controller.value.volume + 0.05).clamp(0.0, 1.0),
           );
@@ -776,6 +809,15 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
           _toggleFullscreen();
         } else {
           widget.onBack();
+        }
+        return KeyEventResult.handled;
+      case LogicalKeyboardKey.keyM:
+        if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+          if (widget.controller.value.volume > 0) {
+            widget.controller.setVolume(0.0);
+          } else {
+            widget.controller.setVolume(1.0);
+          }
         }
         return KeyEventResult.handled;
       default:
@@ -801,10 +843,14 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
             Positioned.fill(
               child: GestureDetector(
                 onTap: () {
-                  if (_controlsVisible) {
-                    setState(() => _controlsVisible = false);
+                  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+                    _togglePlay();
                   } else {
-                    _onMouseActivity();
+                    if (_controlsVisible) {
+                      setState(() => _controlsVisible = false);
+                    } else {
+                      _onMouseActivity();
+                    }
                   }
                 },
                 onDoubleTap: _toggleFullscreen,
@@ -922,7 +968,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                     ),
                                   ),
                                   onPressed: () {
-                                    if (Platform.isWindows) {
+                                    if (!kIsWeb && Platform.isWindows) {
                                       Process.start('cmd', [
                                         '/c',
                                         'start',
@@ -950,7 +996,7 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                                     ),
                                   ),
                                   onPressed: () {
-                                    if (Platform.isWindows) {
+                                    if (!kIsWeb && Platform.isWindows) {
                                       Process.start('cmd', [
                                         '/c',
                                         'start',
@@ -988,7 +1034,10 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                 valueListenable: widget.controller,
                 builder: (context, val, _) {
                   if (!val.isInitialized) return const SizedBox.shrink();
-                  final pos = val.position;
+                  // Apply delay by offsetting the current position
+                  final offsetMs = (_subtitleDelay * 1000).round();
+                  final pos = val.position - Duration(milliseconds: offsetMs);
+                  
                   String captionText = '';
                   for (final cap in _externalCaptions) {
                     if (pos >= cap.start && pos <= cap.end) {
@@ -1176,6 +1225,14 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     initialIndex: widget.initialIndex,
                     onBack: widget.onBack,
                     onActivity: _onMouseActivity,
+                    onDialogOpen: () {
+                      if (mounted) setState(() => _isDialogOpen = true);
+                      _hideTimer?.cancel();
+                    },
+                    onDialogClose: () {
+                      if (mounted) setState(() => _isDialogOpen = false);
+                      _onMouseActivity();
+                    },
                     isFullscreen: _isFullscreen,
                     onToggleFullscreen: _toggleFullscreen,
                     currentFit: _currentFit,
@@ -1198,6 +1255,8 @@ class _WindowsDesktopPlayerState extends State<_WindowsDesktopPlayer> {
                     onSelectExternalSubtitle:
                         (idx, url) => _loadExternalSubtitle(idx, url),
                     onDisableExternalSubtitle: _disableExternalSubtitle,
+                    subtitleDelay: _subtitleDelay,
+                    onSubtitleDelayChanged: (val) => setState(() => _subtitleDelay = val),
                   ),
                 ),
               ),
@@ -1588,6 +1647,8 @@ class _ControlsOverlay extends StatelessWidget {
   final int initialIndex;
   final VoidCallback onBack;
   final VoidCallback onActivity;
+  final VoidCallback? onDialogOpen;
+  final VoidCallback? onDialogClose;
   final bool isFullscreen;
   final VoidCallback onToggleFullscreen;
   final VideoFitOption currentFit;
@@ -1596,6 +1657,8 @@ class _ControlsOverlay extends StatelessWidget {
   final int activeExternalSubIndex;
   final Function(int index, String url) onSelectExternalSubtitle;
   final VoidCallback onDisableExternalSubtitle;
+  final double subtitleDelay;
+  final Function(double) onSubtitleDelayChanged;
   final FocusNode playButtonFocusNode;
   final VoidCallback onBackToPlayer;
 
@@ -1606,6 +1669,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.initialIndex,
     required this.onBack,
     required this.onActivity,
+    this.onDialogOpen,
+    this.onDialogClose,
     required this.isFullscreen,
     required this.onToggleFullscreen,
     required this.currentFit,
@@ -1614,6 +1679,8 @@ class _ControlsOverlay extends StatelessWidget {
     this.activeExternalSubIndex = -1,
     required this.onSelectExternalSubtitle,
     required this.onDisableExternalSubtitle,
+    required this.subtitleDelay,
+    required this.onSubtitleDelayChanged,
     required this.playButtonFocusNode,
     required this.onBackToPlayer,
   });
@@ -1652,6 +1719,56 @@ class _ControlsOverlay extends StatelessWidget {
               ],
             ),
           ),
+
+          // Center mobile controls (only visible on mobile/tablets)
+          if ((!kIsWeb && (Platform.isAndroid || Platform.isIOS)) || MediaQuery.of(context).size.width < 600)
+            Positioned.fill(
+              child: Center(
+                child: ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: controller,
+                  builder: (context, val, _) {
+                    final playing = val.isPlaying;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          iconSize: 48,
+                          color: Colors.white,
+                          icon: const Icon(Icons.replay_10),
+                          onPressed: () {
+                            onActivity();
+                            final next = val.position - const Duration(seconds: 10);
+                            controller.seekTo(next.isNegative ? Duration.zero : next);
+                          },
+                        ),
+                        const SizedBox(width: 32),
+                        IconButton(
+                          iconSize: 64,
+                          color: Colors.white,
+                          icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                          onPressed: () {
+                            onActivity();
+                            playing ? controller.pause() : controller.play();
+                          },
+                        ),
+                        const SizedBox(width: 32),
+                        IconButton(
+                          iconSize: 48,
+                          color: Colors.white,
+                          icon: const Icon(Icons.forward_30),
+                          onPressed: () {
+                            onActivity();
+                            final next = val.position + const Duration(seconds: 30);
+                            controller.seekTo(next);
+                          },
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
 
           // Top bar: back button.
           Positioned(
@@ -1736,11 +1853,15 @@ class _ControlsOverlay extends StatelessWidget {
                           child: SubtitleTrackSelector(
                             controller: controller,
                             onActivity: onActivity,
+                            onDialogOpen: onDialogOpen,
+                            onDialogClose: onDialogClose,
                             externalSubtitles: externalSubtitles,
                             activeExternalSubIndex: activeExternalSubIndex,
                             onSelectExternalSubtitle: onSelectExternalSubtitle,
                             onDisableExternalSubtitle:
                                 onDisableExternalSubtitle,
+                            subtitleDelay: subtitleDelay,
+                            onSubtitleDelayChanged: onSubtitleDelayChanged,
                           ),
                         ),
                         FocusTraversalOrder(
@@ -1748,6 +1869,8 @@ class _ControlsOverlay extends StatelessWidget {
                           child: AudioTrackSelector(
                             controller: controller,
                             onActivity: onActivity,
+                            onDialogOpen: onDialogOpen,
+                            onDialogClose: onDialogClose,
                           ),
                         ),
                         // Volume
@@ -1869,6 +1992,7 @@ class _SeekBarState extends State<_SeekBar> {
         final dur = val.duration.inMilliseconds.toDouble();
         final total = dur;
         final current = (_dragging ?? pos).clamp(0.0, total > 0 ? total : 1.0);
+        final isMobile = (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) || MediaQuery.of(context).size.width < 600;
 
         return SliderTheme(
           data: SliderTheme.of(context).copyWith(
@@ -1876,8 +2000,9 @@ class _SeekBarState extends State<_SeekBar> {
             thumbColor: AppTheme.fullFocusColor,
             inactiveTrackColor: Colors.white24,
             overlayColor: AppTheme.fullFocusColor.withOpacity(0.2),
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            trackHeight: isMobile ? 8 : 3,
+            thumbShape: RoundSliderThumbShape(enabledThumbRadius: isMobile ? 12 : 6),
+            trackShape: const RectangularSliderTrackShape(),
           ),
           child: Slider(
             focusNode: _focusNode,
@@ -2169,15 +2294,30 @@ class PlayerMoreMenuButton extends StatelessWidget {
           );
         } else if (value == 'download') {
           try {
-            await Process.run('start', [streamUrl], runInShell: true);
+            final uri = Uri.parse('http://127.0.0.1:12021/api/download/start');
+            final fileName = Uri.parse(streamUrl).pathSegments.lastWhere(
+              (s) => s.isNotEmpty,
+              orElse: () => 'stream.mp4',
+            );
+            await http.post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'id': streamUrl.hashCode.toRadixString(16),
+                'url': streamUrl,
+                'targetDir': '',
+                'fileName': fileName.contains('.') ? fileName : '$fileName.mp4',
+                'meta': {'name': fileName},
+                'posterUrl': '',
+                'backdropUrl': '',
+              }),
+            );
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Opening download link in browser...'),
-              ),
+              const SnackBar(content: Text('Download started! Check the Downloads tab.')),
             );
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Failed to open browser.')),
+              SnackBar(content: Text('Failed to start download: $e')),
             );
           }
         }
@@ -2360,13 +2500,118 @@ String _getLanguageName(String code) {
   }
 }
 
+class _AudioTrackItem extends StatefulWidget {
+  final bool isSelected;
+  final String lang;
+  final String mainTitle;
+  final String bitRate;
+  final String sampleRate;
+  final String channelStr;
+  final String badge;
+  final VoidCallback onTap;
+  final Widget Function(String text, {bool isLang}) buildBadge;
+
+  const _AudioTrackItem({
+    required this.isSelected,
+    required this.lang,
+    required this.mainTitle,
+    required this.bitRate,
+    required this.sampleRate,
+    required this.channelStr,
+    required this.badge,
+    required this.onTap,
+    required this.buildBadge,
+  });
+
+  @override
+  State<_AudioTrackItem> createState() => _AudioTrackItemState();
+}
+
+class _AudioTrackItemState extends State<_AudioTrackItem> {
+  bool _isFocused = false;
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Focus(
+        onFocusChange: (focused) => setState(() => _isFocused = focused),
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.select) {
+            widget.onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _isHovered = true),
+          onExit: (_) => setState(() => _isHovered = false),
+          child: GestureDetector(
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOut,
+              decoration: BoxDecoration(
+                color: widget.isSelected 
+                    ? (_isFocused || _isHovered ? Colors.blueAccent.withOpacity(0.15) : Colors.white.withOpacity(0.08))
+                    : (_isFocused || _isHovered ? Colors.white.withOpacity(0.05) : Colors.transparent),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: widget.isSelected 
+                      ? (_isFocused || _isHovered ? Colors.blueAccent.withOpacity(0.5) : Colors.white.withOpacity(0.1))
+                      : (_isFocused || _isHovered ? Colors.white.withOpacity(0.1) : Colors.transparent),
+                  width: 1,
+                ),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+              child: Row(
+                children: [
+                  if (widget.lang.isNotEmpty) widget.buildBadge(widget.lang, isLang: true),
+                  Expanded(
+                    child: Text(
+                      widget.mainTitle,
+                      style: TextStyle(
+                        color: widget.isSelected ? Colors.blueAccent.shade200 : (_isFocused || _isHovered ? Colors.white : Colors.white70),
+                        fontSize: 15,
+                        fontWeight: (widget.isSelected || _isFocused || _isHovered) ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  if (widget.bitRate.isNotEmpty) widget.buildBadge(widget.bitRate, isLang: false),
+                  if (widget.sampleRate.isNotEmpty) widget.buildBadge(widget.sampleRate, isLang: false),
+                  if (widget.channelStr.isNotEmpty) widget.buildBadge(widget.channelStr, isLang: false),
+                  if (widget.badge.isNotEmpty) widget.buildBadge(widget.badge, isLang: false),
+                  if (widget.isSelected)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 12),
+                      child: Icon(Icons.check, color: Colors.blueAccent, size: 20),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class AudioTrackSelector extends StatelessWidget {
   final VideoPlayerController controller;
   final VoidCallback onActivity;
+  final VoidCallback? onDialogOpen;
+  final VoidCallback? onDialogClose;
   const AudioTrackSelector({
     super.key,
     required this.controller,
     required this.onActivity,
+    this.onDialogOpen,
+    this.onDialogClose,
   });
 
   Widget _buildBadge(String text, {bool isLang = false}) {
@@ -2394,8 +2639,8 @@ class AudioTrackSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mediaInfo = controller.getMediaInfo();
-    final audioTracks = mediaInfo?.audio ?? [];
+    final mediaInfo = kIsWeb ? null : controller.getMediaInfo();
+    final List<dynamic> audioTracks = kIsWeb ? <dynamic>[] : ((mediaInfo as dynamic)?.audio ?? <dynamic>[]);
     if (audioTracks.isEmpty) return const SizedBox.shrink();
 
     return _TvIconButton(
@@ -2407,17 +2652,22 @@ class AudioTrackSelector extends StatelessWidget {
           context: context,
           builder: (context) {
             return Dialog(
-              backgroundColor: const Color(0xFF0F172A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.white12, width: 1),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 600,
-                  maxHeight: 500,
-                ),
-                child: Column(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                  child: Container(
+                    width: 600,
+                    height: 500,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A).withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5),
+                    ),
+                    child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Padding(
@@ -2438,43 +2688,26 @@ class AudioTrackSelector extends StatelessWidget {
                         itemCount: audioTracks.length + 1,
                         itemBuilder: (context, index) {
                           final activeIds =
-                              controller.getActiveAudioTracks() ?? [];
+                              (kIsWeb ? <int>[] : controller.getActiveAudioTracks() ?? []);
                           final activeId =
                               activeIds.isNotEmpty ? activeIds.first : -1;
 
                           if (index == 0) {
                             final isSelected =
                                 activeId == -1; // Fallback heuristic
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 8,
-                              ),
-                              title: Text(
-                                'Auto',
-                                style: TextStyle(
-                                  color:
-                                      isSelected
-                                          ? Colors.blueAccent
-                                          : Colors.white,
-                                  fontWeight:
-                                      isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              trailing:
-                                  isSelected
-                                      ? const Icon(
-                                        Icons.check,
-                                        color: Colors.blueAccent,
-                                      )
-                                      : null,
+                            return _AudioTrackItem(
+                              isSelected: isSelected,
+                              lang: '',
+                              mainTitle: 'Auto',
+                              bitRate: '',
+                              sampleRate: '',
+                              channelStr: '',
+                              badge: '',
                               onTap: () {
-                                controller.setAudioTracks([-1]);
+                                if (!kIsWeb) controller.setAudioTracks([-1]);
                                 Navigator.pop(context);
                               },
+                              buildBadge: _buildBadge,
                             );
                           }
 
@@ -2545,51 +2778,19 @@ class AudioTrackSelector extends StatelessWidget {
                                   ? title
                                   : 'Track ${track.index}';
 
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 8,
-                            ),
-                            title: Row(
-                              children: [
-                                _buildBadge(lang, isLang: true),
-                                Expanded(
-                                  child: Text(
-                                    mainTitle,
-                                    style: TextStyle(
-                                      color:
-                                          isSelected
-                                              ? Colors.blueAccent
-                                              : Colors.white,
-                                      fontWeight:
-                                          isSelected
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                      fontSize: 15,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                if (bitRate.isNotEmpty) _buildBadge(bitRate),
-                                if (sampleRate.isNotEmpty)
-                                  _buildBadge(sampleRate),
-                                if (channelStr.isNotEmpty)
-                                  _buildBadge(channelStr),
-                                if (badge.isNotEmpty) _buildBadge(badge),
-                              ],
-                            ),
-                            trailing:
-                                isSelected
-                                    ? const Icon(
-                                      Icons.check,
-                                      color: Colors.blueAccent,
-                                    )
-                                    : const SizedBox(width: 24),
+                          return _AudioTrackItem(
+                            isSelected: isSelected,
+                            lang: lang,
+                            mainTitle: mainTitle,
+                            bitRate: bitRate,
+                            sampleRate: sampleRate,
+                            channelStr: channelStr,
+                            badge: badge,
                             onTap: () {
-                              controller.setAudioTracks([listPosition]);
+                              if (!kIsWeb) controller.setAudioTracks([listPosition]);
                               Navigator.pop(context);
                             },
+                            buildBadge: _buildBadge,
                           );
                         },
                       ),
@@ -2597,6 +2798,8 @@ class AudioTrackSelector extends StatelessWidget {
                   ],
                 ),
               ),
+             ),
+            ),
             );
           },
         );
@@ -2605,277 +2808,681 @@ class AudioTrackSelector extends StatelessWidget {
   }
 }
 
-class SubtitleTrackSelector extends StatelessWidget {
+class _SubtitleCategory {
+  final String addonName;
+  final List<_SubtitleLang> langs;
+  _SubtitleCategory(this.addonName, this.langs);
+}
+
+class _SubtitleLang {
+  final String language;
+  final List<_SubtitleTrack> tracks;
+  _SubtitleLang(this.language, this.tracks);
+}
+
+class _SubtitleTrack {
+  final String name;
+  final int? internalIndex; // For embedded
+  final int? externalIndex; // For addon
+  final String? externalUrl;
+  final String? format;
+  _SubtitleTrack(this.name, {this.internalIndex, this.externalIndex, this.externalUrl, this.format});
+}
+
+class _SubtitleTrackSelectorModal extends StatefulWidget {
   final VideoPlayerController controller;
-  final VoidCallback onActivity;
   final List<MediaItemSubtitle> externalSubtitles;
   final int activeExternalSubIndex;
   final Function(int index, String url) onSelectExternalSubtitle;
   final VoidCallback onDisableExternalSubtitle;
+  final double subtitleDelay;
+  final Function(double) onSubtitleDelayChanged;
 
-  const SubtitleTrackSelector({
-    super.key,
+  const _SubtitleTrackSelectorModal({
     required this.controller,
-    required this.onActivity,
-    this.externalSubtitles = const [],
-    this.activeExternalSubIndex = -1,
+    required this.externalSubtitles,
+    required this.activeExternalSubIndex,
     required this.onSelectExternalSubtitle,
     required this.onDisableExternalSubtitle,
+    required this.subtitleDelay,
+    required this.onSubtitleDelayChanged,
   });
 
-  Widget _buildBadge(String text, {bool isLang = false}) {
-    return Container(
-      margin: const EdgeInsets.only(right: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: isLang ? Colors.white.withOpacity(0.15) : Colors.transparent,
-        border:
-            isLang
-                ? null
-                : Border.all(color: Colors.white.withOpacity(0.15), width: 1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: isLang ? Colors.white : Colors.white70,
-          fontSize: 11,
-          fontWeight: isLang ? FontWeight.bold : FontWeight.normal,
+  @override
+  State<_SubtitleTrackSelectorModal> createState() => _SubtitleTrackSelectorModalState();
+}
+
+class _SubtitleTrackSelectorModalState extends State<_SubtitleTrackSelectorModal> {
+  final List<_SubtitleCategory> _categories = [];
+  int _activeCategoryIndex = 0;
+  int _activeLangIndex = 0;
+  int _activeTrackIndex = 0;
+
+  final FocusNode _pane1Node = FocusNode();
+  final FocusNode _pane2Node = FocusNode();
+  final FocusNode _pane3Node = FocusNode();
+  final FocusNode _delayMinusNode = FocusNode();
+  final FocusNode _delayPlusNode = FocusNode();
+  int _focusedPane = 1;
+
+  late int _currentActiveInternal;
+  late int _currentActiveExternal;
+  late double _localDelay;
+
+  @override
+  void initState() {
+    super.initState();
+    _localDelay = widget.subtitleDelay;
+    _initData();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        if (_focusedPane == 1) _pane1Node.requestFocus();
+        else if (_focusedPane == 2) _pane2Node.requestFocus();
+        else if (_focusedPane == 3) _pane3Node.requestFocus();
+      }
+    });
+  }
+
+  void _initData() {
+    final mediaInfo = kIsWeb ? null : widget.controller.getMediaInfo();
+    final List<dynamic> subTracks = kIsWeb ? <dynamic>[] : ((mediaInfo as dynamic)?.subtitle ?? <dynamic>[]);
+    
+    final activeIds = (kIsWeb ? <int>[] : widget.controller.getActiveSubtitleTracks() ?? []);
+    _currentActiveInternal = activeIds.isNotEmpty ? activeIds.first : -1;
+    _currentActiveExternal = widget.activeExternalSubIndex;
+
+    // 1. Embedded
+    final embeddedLangs = <String, List<_SubtitleTrack>>{};
+    for (int i = 0; i < subTracks.length; i++) {
+      final track = subTracks[i];
+      final title = track.metadata['title'] ?? '';
+      String rawLang = track.metadata['language']?.toUpperCase() ?? 'UND';
+      if (rawLang == 'UND' || rawLang.isEmpty) {
+        final upTitle = title.toUpperCase();
+        if (upTitle.contains('ENG')) rawLang = 'ENG';
+        else if (upTitle.contains('ITA')) rawLang = 'ITA';
+        else if (upTitle.contains('FRE') || upTitle.contains('FRA')) rawLang = 'FRE';
+        else if (upTitle.contains('GER') || upTitle.contains('DEU')) rawLang = 'GER';
+        else if (upTitle.contains('SPA')) rawLang = 'SPA';
+        else if (upTitle.contains('JPN')) rawLang = 'JPN';
+        else if (upTitle.contains('KOR')) rawLang = 'KOR';
+        else if (upTitle.contains('HIN')) rawLang = 'HIN';
+      }
+      final lang = _getLanguageName(rawLang);
+      final mainTitle = title.isNotEmpty && title.toUpperCase() != lang ? title : 'Track ${track.index}';
+      
+      embeddedLangs.putIfAbsent(lang, () => []).add(_SubtitleTrack(mainTitle, internalIndex: i));
+    }
+
+    if (embeddedLangs.isNotEmpty) {
+      final lList = embeddedLangs.entries.map((e) => _SubtitleLang(e.key, e.value)).toList();
+      _categories.add(_SubtitleCategory('Embedded', lList));
+    }
+
+    // 2. Addons
+    final addonMap = <String, Map<String, List<_SubtitleTrack>>>{};
+    for (int i = 0; i < widget.externalSubtitles.length; i++) {
+      final ext = widget.externalSubtitles[i];
+      final addon = ext.label;
+      final lang = _getLanguageName(ext.language);
+      
+      String format = '';
+      if (ext.url.toLowerCase().contains('.srt')) format = 'SRT';
+      else if (ext.url.toLowerCase().contains('.vtt')) format = 'VTT';
+      else if (ext.url.toLowerCase().contains('.ass')) format = 'ASS';
+      else if (ext.url.toLowerCase().contains('.ssa')) format = 'SSA';
+      
+      addonMap.putIfAbsent(addon, () => {});
+      addonMap[addon]!.putIfAbsent(lang, () => []);
+      addonMap[addon]![lang]!.add(_SubtitleTrack('Track ${addonMap[addon]![lang]!.length + 1}', externalIndex: i, externalUrl: ext.url, format: format.isNotEmpty ? format : null));
+    }
+
+    for (var addonEntry in addonMap.entries) {
+      final lList = addonEntry.value.entries.map((e) => _SubtitleLang(e.key, e.value)).toList();
+      _categories.add(_SubtitleCategory(addonEntry.key, lList));
+    }
+
+    // Insert "Disabled"
+    _categories.insert(0, _SubtitleCategory('None', [_SubtitleLang('Disabled', [_SubtitleTrack('Disabled')])]));
+
+    // Find initially active
+    for (int c = 0; c < _categories.length; c++) {
+      for (int l = 0; l < _categories[c].langs.length; l++) {
+        for (int t = 0; t < _categories[c].langs[l].tracks.length; t++) {
+          final track = _categories[c].langs[l].tracks[t];
+          if ((_currentActiveExternal == -1 && _currentActiveInternal == -1 && track.name == 'Disabled') ||
+              (_currentActiveExternal != -1 && track.externalIndex == _currentActiveExternal) ||
+              (_currentActiveExternal == -1 && _currentActiveInternal != -1 && track.internalIndex == _currentActiveInternal)) {
+            _activeCategoryIndex = c;
+            _activeLangIndex = l;
+            _activeTrackIndex = t;
+          }
+        }
+      }
+    }
+  }
+
+  void _applySubtitle(_SubtitleTrack track) {
+    if (track.name == 'Disabled') {
+      widget.onDisableExternalSubtitle();
+      if (!kIsWeb) widget.controller.setSubtitleTracks([]);
+    } else if (track.internalIndex != null) {
+      widget.onDisableExternalSubtitle();
+      if (!kIsWeb) widget.controller.setSubtitleTracks([track.internalIndex!]);
+    } else if (track.externalIndex != null && track.externalUrl != null) {
+      widget.onSelectExternalSubtitle(track.externalIndex!, track.externalUrl!);
+    }
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_categories.isEmpty) return const SizedBox.shrink();
+
+    final currentCat = _categories[_activeCategoryIndex];
+    final currentLang = _activeLangIndex < currentCat.langs.length ? currentCat.langs[_activeLangIndex] : currentCat.langs.first;
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            width: 900,
+            height: 600,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0F172A).withOpacity(0.75),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.1), width: 1.5),
+            ),
+            child: FocusTraversalGroup(
+              policy: WidgetOrderTraversalPolicy(),
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+                  
+                  if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                    if (_focusedPane < 3) {
+                      setState(() {
+                        _focusedPane++;
+                        if (_focusedPane == 2) _pane2Node.requestFocus();
+                        else if (_focusedPane == 3) _pane3Node.requestFocus();
+                      });
+                    }
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                    if (_focusedPane > 1) {
+                      setState(() {
+                        _focusedPane--;
+                        if (_focusedPane == 1) _pane1Node.requestFocus();
+                        else if (_focusedPane == 2) _pane2Node.requestFocus();
+                      });
+                    }
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: Column(
+                  children: [
+                    // Header
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 32),
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1))),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.white.withOpacity(0.05), Colors.transparent],
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.subtitles, color: Colors.blueAccent.shade200, size: 28),
+                          const SizedBox(width: 16),
+                          const Text(
+                            'Subtitle Configuration',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    // Panes
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Pane 1: Addons and Delay
+                          Expanded(
+                            flex: 3,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: _buildPane(
+                                    node: _pane1Node,
+                                    title: 'Source',
+                                    icon: Icons.extension,
+                                    isFocused: _focusedPane == 1,
+                                    items: _categories.map((c) => c.addonName).toList(),
+                                    selectedIndex: _activeCategoryIndex,
+                                    onChanged: (idx) {
+                                      setState(() {
+                                        _activeCategoryIndex = idx;
+                                        _activeLangIndex = 0;
+                                        _activeTrackIndex = 0;
+                                      });
+                                    },
+                                    onSelect: () => setState(() { _focusedPane = 2; _pane2Node.requestFocus(); }),
+                                    onFocusBottom: () => _delayMinusNode.requestFocus(),
+                                  ),
+                                ),
+                                Divider(height: 1, color: Colors.white.withOpacity(0.1)),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  color: Colors.white.withOpacity(0.02),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(Icons.av_timer, color: Colors.blueAccent.shade100, size: 16),
+                                          const SizedBox(width: 8),
+                                          const Text(
+                                            'DELAY',
+                                            style: TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              letterSpacing: 1.2,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Focus(
+                                            focusNode: _delayMinusNode,
+                                            onFocusChange: (val) => setState(() {}),
+                                            onKeyEvent: (n, event) {
+                                              if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+                                              if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+                                                _delayPlusNode.requestFocus();
+                                                return KeyEventResult.handled;
+                                              } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                                _pane1Node.requestFocus();
+                                                return KeyEventResult.handled;
+                                              } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.select) {
+                                                setState(() {
+                                                  _localDelay -= 0.25;
+                                                  widget.onSubtitleDelayChanged(_localDelay);
+                                                });
+                                                return KeyEventResult.handled;
+                                              }
+                                              return KeyEventResult.ignored;
+                                            },
+                                            child: IconButton(
+                                              icon: Icon(Icons.remove, color: _delayMinusNode.hasFocus ? Colors.blueAccent.shade200 : Colors.white),
+                                              onPressed: () => setState(() {
+                                                _localDelay -= 0.25;
+                                                widget.onSubtitleDelayChanged(_localDelay);
+                                              }),
+                                              style: IconButton.styleFrom(
+                                                backgroundColor: _delayMinusNode.hasFocus ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                                                side: BorderSide(color: _delayMinusNode.hasFocus ? Colors.blueAccent.withOpacity(0.5) : Colors.transparent),
+                                              ),
+                                              tooltip: '-0.25s',
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Text(
+                                            '${_localDelay > 0 ? '+' : ''}${_localDelay.toStringAsFixed(2)}s',
+                                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Focus(
+                                            focusNode: _delayPlusNode,
+                                            onFocusChange: (val) => setState(() {}),
+                                            onKeyEvent: (n, event) {
+                                              if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+                                              if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+                                                _delayMinusNode.requestFocus();
+                                                return KeyEventResult.handled;
+                                              } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                                                _pane1Node.requestFocus();
+                                                return KeyEventResult.handled;
+                                              } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.select) {
+                                                setState(() {
+                                                  _localDelay += 0.25;
+                                                  widget.onSubtitleDelayChanged(_localDelay);
+                                                });
+                                                return KeyEventResult.handled;
+                                              }
+                                              return KeyEventResult.ignored;
+                                            },
+                                            child: IconButton(
+                                              icon: Icon(Icons.add, color: _delayPlusNode.hasFocus ? Colors.blueAccent.shade200 : Colors.white),
+                                              onPressed: () => setState(() {
+                                                _localDelay += 0.25;
+                                                widget.onSubtitleDelayChanged(_localDelay);
+                                              }),
+                                              style: IconButton.styleFrom(
+                                                backgroundColor: _delayPlusNode.hasFocus ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                                                side: BorderSide(color: _delayPlusNode.hasFocus ? Colors.blueAccent.withOpacity(0.5) : Colors.transparent),
+                                              ),
+                                              tooltip: '+0.25s',
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          VerticalDivider(width: 1, color: Colors.white.withOpacity(0.1)),
+                          
+                          // Pane 2: Languages
+                          Expanded(
+                            flex: 3,
+                            child: _buildPane(
+                              node: _pane2Node,
+                              title: 'Language',
+                              icon: Icons.language,
+                              isFocused: _focusedPane == 2,
+                              items: currentCat.langs.map((l) => l.language).toList(),
+                              selectedIndex: _activeLangIndex,
+                              onChanged: (idx) {
+                                setState(() {
+                                  _activeLangIndex = idx;
+                                  _activeTrackIndex = 0;
+                                });
+                              },
+                              onSelect: () => setState(() { _focusedPane = 3; _pane3Node.requestFocus(); }),
+                            ),
+                          ),
+                          VerticalDivider(width: 1, color: Colors.white.withOpacity(0.1)),
+                          
+                          // Pane 3: Tracks
+                          Expanded(
+                            flex: 4,
+                            child: _buildPane(
+                              node: _pane3Node,
+                              title: 'Track',
+                              icon: Icons.segment,
+                              isFocused: _focusedPane == 3,
+                              items: currentLang.tracks.map((t) => t.name).toList(),
+                              selectedIndex: _activeTrackIndex,
+                              onChanged: (idx) => setState(() => _activeTrackIndex = idx),
+                              onSelect: () => _applySubtitle(currentLang.tracks[_activeTrackIndex]),
+                              tracks: currentLang.tracks,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildPane({
+    required FocusNode node,
+    required String title,
+    required IconData icon,
+    required bool isFocused,
+    required List<String> items,
+    required int selectedIndex,
+    required Function(int) onChanged,
+    required VoidCallback onSelect,
+    VoidCallback? onFocusBottom,
+    List<_SubtitleTrack>? tracks,
+  }) {
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 200),
+      opacity: isFocused ? 1.0 : 0.4,
+      child: Focus(
+        focusNode: node,
+        onKeyEvent: (n, event) {
+          if (event is! KeyDownEvent && event is! KeyRepeatEvent) return KeyEventResult.ignored;
+          if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+            if (selectedIndex < items.length - 1) {
+              onChanged(selectedIndex + 1);
+            } else if (onFocusBottom != null) {
+              onFocusBottom();
+            }
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+            if (selectedIndex > 0) onChanged(selectedIndex - 1);
+            return KeyEventResult.handled;
+          } else if (event.logicalKey == LogicalKeyboardKey.enter || event.logicalKey == LogicalKeyboardKey.select) {
+            onSelect();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Pane Header
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: Colors.white54),
+                  const SizedBox(width: 8),
+                  Text(
+                    title.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // List
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                itemCount: items.length,
+                itemBuilder: (context, idx) {
+                  final isSelected = idx == selectedIndex;
+                  bool isActiveTrack = false;
+                  
+                  if (tracks != null) {
+                    final t = tracks[idx];
+                    isActiveTrack = (_currentActiveExternal == -1 && _currentActiveInternal == -1 && t.name == 'Disabled') ||
+                      (_currentActiveExternal != -1 && t.externalIndex == _currentActiveExternal) ||
+                      (_currentActiveExternal == -1 && _currentActiveInternal != -1 && t.internalIndex == _currentActiveInternal);
+                  }
+
+                  return _SubtitlePaneItem(
+                    idx: idx,
+                    text: items[idx],
+                    isSelected: isSelected,
+                    isFocused: isFocused,
+                    isActiveTrack: isActiveTrack,
+                    track: tracks != null ? tracks[idx] : null,
+                    onTap: () {
+                      onChanged(idx);
+                      node.requestFocus();
+                      onSelect();
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SubtitlePaneItem extends StatefulWidget {
+  final int idx;
+  final String text;
+  final bool isSelected;
+  final bool isFocused;
+  final bool isActiveTrack;
+  final _SubtitleTrack? track;
+  final VoidCallback onTap;
+
+  const _SubtitlePaneItem({
+    required this.idx,
+    required this.text,
+    required this.isSelected,
+    required this.isFocused,
+    required this.isActiveTrack,
+    this.track,
+    required this.onTap,
+  });
+
+  @override
+  State<_SubtitlePaneItem> createState() => _SubtitlePaneItemState();
+}
+
+class _SubtitlePaneItemState extends State<_SubtitlePaneItem> {
+  bool _isHovered = false;
+
   @override
   Widget build(BuildContext context) {
-    final mediaInfo = controller.getMediaInfo();
-    final subTracks = mediaInfo?.subtitle ?? [];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        child: GestureDetector(
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
+              color: widget.isSelected 
+                  ? (widget.isFocused || _isHovered ? Colors.blueAccent.withOpacity(0.15) : Colors.white.withOpacity(0.08)) 
+                  : (_isHovered ? Colors.white.withOpacity(0.05) : Colors.transparent),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: widget.isSelected 
+                    ? (widget.isFocused || _isHovered ? Colors.blueAccent.withOpacity(0.5) : Colors.white.withOpacity(0.1))
+                    : (_isHovered ? Colors.white.withOpacity(0.1) : Colors.transparent),
+                width: 1,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.text,
+                    style: TextStyle(
+                      color: widget.isActiveTrack 
+                          ? Colors.blueAccent.shade200 
+                          : (widget.isSelected || _isHovered ? Colors.white : Colors.white70),
+                      fontSize: 15,
+                      fontWeight: (widget.isSelected || widget.isActiveTrack || _isHovered) ? FontWeight.w600 : FontWeight.normal,
+                    ),
+                  ),
+                ),
+                if (widget.track != null && widget.track!.format != null)
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: widget.isActiveTrack ? Colors.blueAccent.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      widget.track!.format!,
+                      style: TextStyle(
+                        color: widget.isActiveTrack ? Colors.blueAccent.shade200 : Colors.white70,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                if (widget.isActiveTrack) 
+                  Icon(Icons.check_circle, color: Colors.blueAccent.shade200, size: 20),
+                if (widget.isSelected && widget.isFocused && widget.track == null) 
+                  const Icon(Icons.chevron_right, color: Colors.white70, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SubtitleTrackSelector extends StatelessWidget {
+  final VideoPlayerController controller;
+  final VoidCallback onActivity;
+  final VoidCallback? onDialogOpen;
+  final VoidCallback? onDialogClose;
+  final List<MediaItemSubtitle> externalSubtitles;
+  final int activeExternalSubIndex;
+  final Function(int index, String url) onSelectExternalSubtitle;
+  final VoidCallback onDisableExternalSubtitle;
+  final double subtitleDelay;
+  final Function(double) onSubtitleDelayChanged;
+
+  const SubtitleTrackSelector({
+    super.key,
+    required this.controller,
+    required this.onActivity,
+    this.onDialogOpen,
+    this.onDialogClose,
+    this.externalSubtitles = const [],
+    this.activeExternalSubIndex = -1,
+    required this.onSelectExternalSubtitle,
+    required this.onDisableExternalSubtitle,
+    required this.subtitleDelay,
+    required this.onSubtitleDelayChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final mediaInfo = kIsWeb ? null : controller.getMediaInfo();
+    final List<dynamic> subTracks = kIsWeb ? <dynamic>[] : ((mediaInfo as dynamic)?.subtitle ?? <dynamic>[]);
     if (subTracks.isEmpty && externalSubtitles.isEmpty)
       return const SizedBox.shrink();
 
     return _TvIconButton(
       icon: Icons.subtitles,
       tooltip: 'Subtitles',
-      onPressed: () {
+      onPressed: () async {
         onActivity();
-        showDialog(
+        onDialogOpen?.call();
+        await showDialog(
           context: context,
-          builder: (context) {
-            return Dialog(
-              backgroundColor: const Color(0xFF0F172A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.white12, width: 1),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 600,
-                  maxHeight: 500,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text(
-                        'Subtitles',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const Divider(color: Colors.white24, height: 1),
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        itemCount:
-                            subTracks.length + externalSubtitles.length + 1,
-                        itemBuilder: (context, index) {
-                          final activeIds =
-                              controller.getActiveSubtitleTracks() ?? [];
-                          final activeId =
-                              activeIds.isNotEmpty ? activeIds.first : -1;
-
-                          if (index == 0) {
-                            final isSelected =
-                                activeIds.isEmpty &&
-                                activeExternalSubIndex == -1;
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 8,
-                              ),
-                              title: Text(
-                                'Disabled',
-                                style: TextStyle(
-                                  color:
-                                      isSelected
-                                          ? Colors.blueAccent
-                                          : Colors.white,
-                                  fontWeight:
-                                      isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              trailing:
-                                  isSelected
-                                      ? const Icon(
-                                        Icons.check,
-                                        color: Colors.blueAccent,
-                                      )
-                                      : null,
-                              onTap: () {
-                                onDisableExternalSubtitle();
-                                controller.setSubtitleTracks([]);
-                                Navigator.pop(context);
-                              },
-                            );
-                          }
-
-                          // Internal container tracks
-                          if (index - 1 < subTracks.length) {
-                            final track = subTracks[index - 1];
-                            final listPosition = index - 1;
-                            final isSelected =
-                                listPosition == activeId &&
-                                activeIds.isNotEmpty &&
-                                activeExternalSubIndex == -1;
-
-                            final title = track.metadata['title'] ?? '';
-                            String rawLang =
-                                track.metadata['language']?.toUpperCase() ??
-                                'UND';
-
-                            if (rawLang == 'UND' || rawLang.isEmpty) {
-                              final upTitle = title.toUpperCase();
-                              if (upTitle.contains('ENG'))
-                                rawLang = 'ENG';
-                              else if (upTitle.contains('ITA'))
-                                rawLang = 'ITA';
-                              else if (upTitle.contains('FRE') ||
-                                  upTitle.contains('FRA'))
-                                rawLang = 'FRE';
-                              else if (upTitle.contains('GER') ||
-                                  upTitle.contains('DEU'))
-                                rawLang = 'GER';
-                              else if (upTitle.contains('SPA'))
-                                rawLang = 'SPA';
-                              else if (upTitle.contains('JPN'))
-                                rawLang = 'JPN';
-                              else if (upTitle.contains('KOR'))
-                                rawLang = 'KOR';
-                              else if (upTitle.contains('HIN'))
-                                rawLang = 'HIN';
-                            }
-
-                            final lang = _getLanguageName(rawLang);
-                            final mainTitle =
-                                title.isNotEmpty && title.toUpperCase() != lang
-                                    ? title
-                                    : 'Track ${track.index}';
-
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 24,
-                                vertical: 8,
-                              ),
-                              title: Row(
-                                children: [
-                                  _buildBadge(lang, isLang: true),
-                                  Expanded(
-                                    child: Text(
-                                      mainTitle,
-                                      style: TextStyle(
-                                        color:
-                                            isSelected
-                                                ? Colors.blueAccent
-                                                : Colors.white,
-                                        fontWeight:
-                                            isSelected
-                                                ? FontWeight.bold
-                                                : FontWeight.normal,
-                                        fontSize: 15,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              trailing:
-                                  isSelected
-                                      ? const Icon(
-                                        Icons.check,
-                                        color: Colors.blueAccent,
-                                      )
-                                      : const SizedBox(width: 24),
-                              onTap: () {
-                                onDisableExternalSubtitle();
-                                controller.setSubtitleTracks([listPosition]);
-                                Navigator.pop(context);
-                              },
-                            );
-                          }
-
-                          // External addon tracks
-                          final extIndex = index - 1 - subTracks.length;
-                          final extSub = externalSubtitles[extIndex];
-                          final isSelected = activeExternalSubIndex == extIndex;
-
-                          final fullLang = _getLanguageName(extSub.language);
-                          final addonTitle =
-                              extSub.label.isNotEmpty ? extSub.label : 'Addon';
-
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 8,
-                            ),
-                            title: Row(
-                              children: [
-                                _buildBadge(fullLang, isLang: true),
-                                Expanded(
-                                  child: Text(
-                                    addonTitle,
-                                    style: TextStyle(
-                                      color:
-                                          isSelected
-                                              ? Colors.blueAccent
-                                              : Colors.white,
-                                      fontWeight:
-                                          isSelected
-                                              ? FontWeight.bold
-                                              : FontWeight.normal,
-                                      fontSize: 15,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            trailing:
-                                isSelected
-                                    ? const Icon(
-                                      Icons.check,
-                                      color: Colors.blueAccent,
-                                    )
-                                    : const SizedBox(width: 24),
-                            onTap: () {
-                              onSelectExternalSubtitle(extIndex, extSub.url);
-                              Navigator.pop(context);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+          builder: (context) => _SubtitleTrackSelectorModal(
+            controller: controller,
+            externalSubtitles: externalSubtitles,
+            activeExternalSubIndex: activeExternalSubIndex,
+            onSelectExternalSubtitle: onSelectExternalSubtitle,
+            onDisableExternalSubtitle: onDisableExternalSubtitle,
+            subtitleDelay: subtitleDelay,
+            onSubtitleDelayChanged: onSubtitleDelayChanged,
+          ),
         );
       },
     );

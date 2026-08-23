@@ -1,5 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+
+List<Widget> animateStaggeredList(List<Widget> children, {int durationMs = 375, double verticalOffset = 50.0}) {
+  return AnimationConfiguration.toStaggeredList(
+    duration: Duration(milliseconds: durationMs),
+    childAnimationBuilder: (widget) => SlideAnimation(
+      verticalOffset: verticalOffset,
+      child: FadeInAnimation(
+        child: widget,
+      ),
+    ),
+    children: children,
+  );
+}
 
 Widget buildSectionHeader(BuildContext context, IconData icon, String title) {
   return Padding(

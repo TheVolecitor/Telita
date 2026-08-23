@@ -70,7 +70,7 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildTVDropdown<String>(
                   context: context,
                   label: 'App Theme',
@@ -122,7 +122,32 @@ class _AppearanceSettingsScreenState extends State<AppearanceSettingsScreen> {
                     },
                   ),
                 ],
-              ],
+                const SizedBox(height: 16),
+                buildSlider(
+                  label: 'Global Scaling (Zoom)',
+                  desc: 'Adjust the size of the UI on the discover and detail pages',
+                  value: cfg.discoverScale,
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  unit: 'x',
+                  onChanged: (val) {
+                    SettingsService.instance.set('discoverScale', val);
+                  },
+                ),
+                buildSlider(
+                  label: 'Backdrop Opacity',
+                  desc: 'Adjust the transparency of the background overlay',
+                  value: cfg.backdropOpacity,
+                  min: 0.0,
+                  max: 1.0,
+                  divisions: 20,
+                  unit: '',
+                  onChanged: (val) {
+                    SettingsService.instance.set('backdropOpacity', val);
+                  },
+                ),
+              ]),
             );
           },
         ),

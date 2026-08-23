@@ -190,23 +190,6 @@ class _CatalogSettingsScreenState extends State<CatalogSettingsScreen> {
           ? Center(child: CircularProgressIndicator(color: accentColor))
           : Column(
               children: [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: buildSlider(
-                    label: 'Discover Page Scale',
-                    desc: 'Adjust the size of the catalogs on the discover page',
-                    value: SettingsService.instance.value.discoverScale,
-                    min: 0.5,
-                    max: 2.0,
-                    divisions: 15, // Steps of 0.1
-                    unit: 'x',
-                    onChanged: (val) {
-                      setState(() {
-                        SettingsService.instance.set('discoverScale', val);
-                      });
-                    },
-                  ),
-                ),
                 Expanded(
                   child: ReorderableListView.builder(
                     padding: const EdgeInsets.all(16.0),

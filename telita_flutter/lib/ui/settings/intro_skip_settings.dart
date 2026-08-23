@@ -20,7 +20,7 @@ class IntroSkipSettingsScreen extends StatelessWidget {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildToggle(
                   label: 'Enable Intro Skip',
                   desc: 'Automatically fetch timestamps to skip intros and recaps',
@@ -40,7 +40,7 @@ class IntroSkipSettingsScreen extends StatelessWidget {
                     if (val != null) SettingsService.instance.set('introSkipProvider', val);
                   },
                 ),
-              ],
+              ]),
             );
           },
         ),

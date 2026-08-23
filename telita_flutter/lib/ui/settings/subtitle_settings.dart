@@ -38,7 +38,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildToggle(
                   label: 'Enable Subtitles',
                   desc: 'Auto-load subtitles when available',
@@ -97,7 +97,7 @@ class SubtitleSettingsScreen extends StatelessWidget {
                   unit: '%',
                   onChanged: (val) => SettingsService.instance.set('subtitleBgOpacity', val.round()),
                 ),
-              ],
+              ]),
             );
           },
         ),

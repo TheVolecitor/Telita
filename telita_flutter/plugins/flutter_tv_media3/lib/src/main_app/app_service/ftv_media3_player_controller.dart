@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:fvp/fvp.dart';
 import 'package:fvp/fvp.dart' as fvp;
-import 'package:flutter_acrylic/flutter_acrylic.dart';
+
 import '../../../flutter_tv_media3.dart';
 import '../../entity/find_subtitles_state.dart';
 import '../../entity/refresh_rate_info.dart';
@@ -892,7 +892,7 @@ class FtvMedia3PlayerController {
       try {
         await controller.setVolume(0.0);
       } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 150));
       try {
         await controller.dispose();
       } catch (_) {}
@@ -904,7 +904,15 @@ class FtvMedia3PlayerController {
 
   /// Closes the player and disposes player instance resources on Windows.
   Future<void> closePlayer() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if ((true)) {
+      if (_playbackState.position != null && _playbackState.duration != null) {
+        // Sync watch history before disposing
+        await _handleMethodCall(MethodCall('onWatchTimeMarked', {
+          'playlist_index': _playerState.playIndex,
+          'duration_ms': _playbackState.duration! * 1000,
+          'position_ms': _playbackState.position! * 1000,
+        }));
+      }
       await _safeDisposeController();
     }
   }
@@ -943,7 +951,7 @@ class FtvMedia3PlayerController {
       screenshotsEnable: _onScreenshotTaken != null,
     );
 
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if ((true)) {
       await _safeDisposeController();
       
       final subList = playlist[initialIndex].subtitles;
@@ -952,51 +960,62 @@ class FtvMedia3PlayerController {
         subFilesStr = subList.map((s) => s.url).join(';');
       }
 
-      // Register fvp with hardware decoder fallbacks, seekable HTTP, 50MB buffer, and external subtitle files
-      fvp.registerWith(options: {
-        'video.decoders': ['D3D11', 'DXVA', 'CUDA', 'mediacodec', 'mediacodec-copy', 'FFmpeg'],
-        'bufferRange': 52428800, // 50 MB frontend buffer
-        'player': {
-          'bufferRange': '52428800',
-          'avio.buffer_size': '52428800',
-          'avformat.seekable': '1',
-          'avio.seekable': '1',
-          'avformat.fflags': '+fastseek',
-          if (subFilesStr != null && subFilesStr.isNotEmpty) 'sub-files': subFilesStr,
-        },
-      });
+      // Decode file:// URIs to native OS paths (e.g. file:///C:/foo%20bar → C:\foo bar)
+      // FVP/MDK on Windows requires a plain native path, not a URI string.
+      String itemUrl = playlist[initialIndex].url;
+      if (itemUrl.startsWith('file://')) {
+        itemUrl = Uri.parse(itemUrl).toFilePath();
+      }
 
-      _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(playlist[initialIndex].url),
-        httpHeaders: playlist[initialIndex].headers ?? const <String, String>{},
-      );
+      // Create the controller and assign to field immediately so dispose cycles see it.
+      final VideoPlayerController controller;
+      if (itemUrl.startsWith('http://') || itemUrl.startsWith('https://')) {
+        controller = VideoPlayerController.networkUrl(
+          Uri.parse(itemUrl),
+          httpHeaders: playlist[initialIndex].headers ?? const <String, String>{},
+        );
+      } else {
+        // Plain native path (file:// was already decoded above)
+        controller = VideoPlayerController.file(File(itemUrl));
+      }
+      _videoPlayerController = controller;
 
-      _videoPlayerListener = () {
-        final ctrl = _videoPlayerController;
-        if (ctrl == null) return;
-        final val = ctrl.value;
-        if (val.isInitialized) {
-          final newPos = val.position.inSeconds;
-          final newDur = val.duration.inSeconds;
-          if (_playbackState.position != newPos || _playbackState.duration != newDur) {
-            _updatePlaybackState(_playbackState.copyWith(
-              position: newPos,
-              duration: newDur,
-            ));
-          }
-          final newStateVal = val.isPlaying ? StateValue.playing : StateValue.paused;
-          if (_playerState.stateValue != newStateVal) {
-            _updateState(_playerState.copyWith(
-              stateValue: newStateVal,
-            ));
-          }
+      // Capture the LOCAL `controller` instance in the closure — never reads
+      // the field which may be reassigned/nulled during a dispose cycle.
+      void listener() {
+        if (!controller.value.isInitialized) return;
+        final val = controller.value;
+        final newPos = val.position.inSeconds;
+        final newDur = val.duration.inSeconds;
+        if (_playbackState.position != newPos || _playbackState.duration != newDur) {
+          _updatePlaybackState(_playbackState.copyWith(
+            position: newPos,
+            duration: newDur,
+          ));
         }
-      };
-      _videoPlayerController!.addListener(_videoPlayerListener!);
+        final newStateVal = val.isPlaying ? StateValue.playing : StateValue.paused;
+        if (_playerState.stateValue != newStateVal) {
+          _updateState(_playerState.copyWith(stateValue: newStateVal));
+        }
+        if (val.hasError) {
+          print('⚠️ [FVP/VideoPlayer] Error: ${val.errorDescription}');
+          _updateState(_playerState.copyWith(lastError: 'PLAYER_ERROR: ${val.errorDescription}'));
+        }
+      }
 
-      await _videoPlayerController!.initialize();
-      await _videoPlayerController!.play();
+      _videoPlayerListener = listener;
+      controller.addListener(listener);
+
+      try {
+        await controller.initialize();
+        await controller.play();
+      } catch (e, st) {
+        print('⚠️ [FVP/VideoPlayer] Initialization failed: $e');
+        print(st);
+        _updateState(_playerState.copyWith(lastError: 'INIT_ERROR: $e'));
+      }
       return;
+
     }
 
     final playlistMap = playlist.map((e) => e.toMap()).toList();
@@ -1147,7 +1166,7 @@ class FtvMedia3PlayerController {
 
   /// Toggles the player between play and pause states.
   Future<void> playPause() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
+    if ((true) && _videoPlayerController != null) {
       _videoPlayerController!.value.isPlaying 
           ? await _videoPlayerController!.pause() 
           : await _videoPlayerController!.play();
@@ -1158,7 +1177,7 @@ class FtvMedia3PlayerController {
 
   /// Starts or resumes playback.
   Future<void> play() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
+    if ((true) && _videoPlayerController != null) {
       await _videoPlayerController!.play();
       return;
     }
@@ -1167,7 +1186,7 @@ class FtvMedia3PlayerController {
 
   /// Pauses playback.
   Future<void> pause() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
+    if ((true) && _videoPlayerController != null) {
       await _videoPlayerController!.pause();
       return;
     }
@@ -1178,7 +1197,7 @@ class FtvMedia3PlayerController {
   ///
   /// [positionSeconds] The position to seek to, in seconds.
   Future<void> seekTo({required int positionSeconds}) async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
+    if ((true) && _videoPlayerController != null) {
       await _videoPlayerController!.seekTo(Duration(seconds: positionSeconds));
       return;
     }
@@ -1295,7 +1314,7 @@ class FtvMedia3PlayerController {
 
   /// Stops playback and releases player resources.
   Future<void> stop() async {
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS) && _videoPlayerController != null) {
+    if ((true) && _videoPlayerController != null) {
       if (_playbackState.position != null && _playbackState.duration != null) {
         // Sync watch history before disposing
         await _handleMethodCall(MethodCall('onWatchTimeMarked', {

@@ -36,6 +36,11 @@ class AppSettings {
   String customSecondaryColor;
   String catalogConfigJson;
   double discoverScale;
+  double backdropOpacity;
+  String downloadPath;
+  bool debugDisableSkipSegments;
+  bool debugDisableWatchHistory;
+  bool debugDisableSimkl;
 
   AppSettings({
     this.subtitleEnabled = true,
@@ -69,6 +74,11 @@ class AppSettings {
     this.customSecondaryColor = '#8A84FF',
     this.catalogConfigJson = '{}',
     this.discoverScale = 1.0,
+    this.backdropOpacity = 0.5,
+    this.downloadPath = '',
+    this.debugDisableSkipSegments = false,
+    this.debugDisableWatchHistory = false,
+    this.debugDisableSimkl = false,
   });
 
   factory AppSettings.fromPrefs(SharedPreferences prefs) {
@@ -104,6 +114,11 @@ class AppSettings {
       customSecondaryColor: prefs.getString('customSecondaryColor') ?? '#8A84FF',
       catalogConfigJson: prefs.getString('catalogConfigJson') ?? '{}',
       discoverScale: prefs.getDouble('discoverScale') ?? 1.0,
+      backdropOpacity: prefs.getDouble('backdropOpacity') ?? 0.5,
+      downloadPath: prefs.getString('downloadPath') ?? '',
+      debugDisableSkipSegments: prefs.getBool('debugDisableSkipSegments') ?? false,
+      debugDisableWatchHistory: prefs.getBool('debugDisableWatchHistory') ?? false,
+      debugDisableSimkl: prefs.getBool('debugDisableSimkl') ?? false,
     );
   }
 
@@ -139,6 +154,11 @@ class AppSettings {
     prefs.setString('customSecondaryColor', customSecondaryColor);
     prefs.setString('catalogConfigJson', catalogConfigJson);
     prefs.setDouble('discoverScale', discoverScale);
+    prefs.setDouble('backdropOpacity', backdropOpacity);
+    prefs.setString('downloadPath', downloadPath);
+    prefs.setBool('debugDisableSkipSegments', debugDisableSkipSegments);
+    prefs.setBool('debugDisableWatchHistory', debugDisableWatchHistory);
+    prefs.setBool('debugDisableSimkl', debugDisableSimkl);
   }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) {
@@ -174,6 +194,7 @@ class AppSettings {
       customSecondaryColor: json['customSecondaryColor'] ?? '#8A84FF',
       catalogConfigJson: json['catalogConfigJson'] ?? '{}',
       discoverScale: (json['discoverScale'] ?? 1.0).toDouble(),
+      downloadPath: json['downloadPath'] ?? '',
     );
   }
 
@@ -209,6 +230,7 @@ class AppSettings {
         'customSecondaryColor': customSecondaryColor,
         'catalogConfigJson': catalogConfigJson,
         'discoverScale': discoverScale,
+        'downloadPath': downloadPath,
       };
 }
 
@@ -309,6 +331,11 @@ class SettingsService extends ValueNotifier<AppSettings> {
     if (key == 'customSecondaryColor' && val is String) current.customSecondaryColor = val;
     if (key == 'catalogConfigJson' && val is String) current.catalogConfigJson = val;
     if (key == 'discoverScale' && val is double) current.discoverScale = val;
+    if (key == 'backdropOpacity' && val is double) current.backdropOpacity = val;
+    if (key == 'downloadPath' && val is String) current.downloadPath = val;
+    if (key == 'debugDisableSkipSegments' && val is bool) current.debugDisableSkipSegments = val;
+    if (key == 'debugDisableWatchHistory' && val is bool) current.debugDisableWatchHistory = val;
+    if (key == 'debugDisableSimkl' && val is bool) current.debugDisableSimkl = val;
 
     current.save(prefs);
     value = current;

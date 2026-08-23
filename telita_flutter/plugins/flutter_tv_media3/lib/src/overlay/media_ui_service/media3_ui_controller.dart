@@ -657,7 +657,7 @@ class Media3UiController {
   Future<void> updateSubtitleStyle({SubtitleStyle? subtitleStyle}) async {
     // On Windows media_kit is used directly — no MethodChannel. Update state
     // immediately so the player screen's stream listener picks it up.
-    if ((Platform.isWindows || Platform.isLinux || Platform.isMacOS || Platform.isAndroid || Platform.isIOS)) {
+    if ((true)) {
       _updateState(_playerState.copyWith(subtitleStyle: subtitleStyle));
       return;
     }

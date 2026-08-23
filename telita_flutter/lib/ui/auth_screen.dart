@@ -4,6 +4,7 @@ import '../core/auth.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'spinning_logo.dart';
 
@@ -49,13 +50,13 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _initAuthFlow() async {
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       if (mounted) setState(() => _isLoading = false);
       return;
     }
 
     bool isTV = false;
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       try {
         isTV = await _channel.invokeMethod('isTV') ?? false;
       } catch (e) {

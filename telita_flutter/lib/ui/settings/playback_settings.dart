@@ -20,7 +20,7 @@ class PlaybackSettingsScreen extends StatelessWidget {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildTVDropdown<String>(
                   context: context,
                   label: 'Hardware Decoding',
@@ -58,7 +58,7 @@ class PlaybackSettingsScreen extends StatelessWidget {
                   value: !cfg.resumePrompt,
                   onChanged: (val) => SettingsService.instance.set('resumePrompt', !val),
                 ),
-              ],
+              ]),
             );
           },
         ),

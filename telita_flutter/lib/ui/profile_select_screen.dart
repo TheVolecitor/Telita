@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import '../core/auth.dart';
 
 class ProfileSelectScreen extends StatefulWidget {
@@ -84,7 +85,8 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
         child: Center(
           child: _showPinInput
             ? _buildPinInput()
-            : Column(
+            : SingleChildScrollView(
+                child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   const Text(
@@ -107,6 +109,7 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
                   ),
                 ],
               ),
+            ),
         ),
       ),
     );
@@ -354,7 +357,7 @@ class _ProfileSelectScreenState extends State<ProfileSelectScreen> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          (Platform.isWindows || Platform.isMacOS || Platform.isLinux || MediaQuery.of(context).orientation == Orientation.portrait)
+          (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) || MediaQuery.of(context).orientation == Orientation.portrait
             ? StandardPinInput(
                 controller: _pinCtrl,
                 onSubmitted: _submitPin,
@@ -795,7 +798,7 @@ class _ChangePinDialogState extends State<_ChangePinDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            (Platform.isWindows || Platform.isMacOS || Platform.isLinux || MediaQuery.of(context).orientation == Orientation.portrait)
+            (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) || MediaQuery.of(context).orientation == Orientation.portrait
               ? StandardPinInput(
                   controller: _step == 0 ? _curCtrl : _newCtrl,
                   onSubmitted: _submit,

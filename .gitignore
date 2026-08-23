@@ -24,6 +24,7 @@ core/*.ps1
 core/*.sh
 telita_flutter/*.ps1
 telita_flutter/*.sh
+fvp_test_app/
 
 # User-specific
 *.suo
@@ -31,3 +32,5 @@ telita_flutter/*.sh
 *.userosscache
 *.sln.docstates
 telita_api/
+local_proxy.py
+.agents

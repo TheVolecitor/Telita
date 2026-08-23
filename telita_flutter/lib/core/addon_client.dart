@@ -282,14 +282,18 @@ class ProxyHeaders {
 class BehaviorHints {
   final bool? notWebReady;
   final String? bingeGroup;
+  final String? filename;
+  final int? videoSize;
   final ProxyHeaders? proxyHeaders;
 
-  BehaviorHints({this.notWebReady, this.bingeGroup, this.proxyHeaders});
+  BehaviorHints({this.notWebReady, this.bingeGroup, this.filename, this.videoSize, this.proxyHeaders});
 
   factory BehaviorHints.fromJson(Map<String, dynamic> json) {
     return BehaviorHints(
       notWebReady: json['notWebReady'],
       bingeGroup: json['bingeGroup']?.toString(),
+      filename: json['filename']?.toString(),
+      videoSize: json['videoSize'] is num ? (json['videoSize'] as num).toInt() : null,
       proxyHeaders: json['proxyHeaders'] != null
           ? ProxyHeaders.fromJson(json['proxyHeaders'])
           : null,

@@ -28,7 +28,7 @@ class _MDBListSettingsScreenState extends State<MDBListSettingsScreen> {
           builder: (context, cfg, _) {
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 buildToggle(
                   label: 'Enable MDBList Ratings',
                   desc: 'Fetch and display IMDb, Rotten Tomatoes, Metacritic & Trakt ratings',
@@ -119,7 +119,7 @@ class _MDBListSettingsScreenState extends State<MDBListSettingsScreen> {
                     ],
                   ],
                 ],
-              ],
+              ]),
             );
           },
         ),

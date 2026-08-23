@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import 'web_safe_image.dart';
+import 'package:flutter/foundation.dart';
 import '../core/addon_client.dart';
 import '../core/watch_history.dart';
 import '../core/auth.dart';
@@ -10,6 +11,7 @@ import '../core/simkl_client.dart';
 import '../core/settings.dart';
 import '../core/catalog_config.dart';
 import 'spinning_logo.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class DiscoverScreen extends StatefulWidget {
   final Function(MetaPreview item, String type, {String? initialVideoId}) onSelect;
@@ -120,36 +122,55 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       print('Error loading Simkl watchlists: $e');
     }
 
+    // Pre-populate the UI with catalog placeholders
+    for (final src in rootCatalogs) {
+      final typeLabel = src.catalog.type == 'movie'
+          ? 'Movies'
+          : src.catalog.type == 'series'
+              ? 'Series'
+              : (src.catalog.type.substring(0, 1).toUpperCase() +
+                  src.catalog.type.substring(1));
+                  
+      loadedGroups.add(CatalogGroup(
+        id: "${src.addon.manifest.id}-${src.catalog.id}-${src.catalog.type}",
+        title: "${src.catalog.name ?? src.catalog.id} - $typeLabel",
+        items: [],
+      ));
+    }
+    
+    if (mounted) {
+      setState(() {
+        _catalogs = List.from(loadedGroups);
+        _loadingCatalogs = false; 
+      });
+    }
+
     // Fetch sequentially to prevent network socket exhaustion and SSL Handshake failures on weak TV network stacks
     for (int i = 0; i < rootCatalogs.length; i++) {
       if (!mounted) break;
 
       final src = rootCatalogs[i];
+      final id = "${src.addon.manifest.id}-${src.catalog.id}-${src.catalog.type}";
       try {
         final results = await AddonRegistry.instance.fetchCatalog(
           src.addon,
           src.catalog,
         );
-        if (results.isNotEmpty) {
-          final typeLabel = src.catalog.type == 'movie'
-              ? 'Movies'
-              : src.catalog.type == 'series'
-              ? 'Series'
-              : (src.catalog.type.substring(0, 1).toUpperCase() +
-                    src.catalog.type.substring(1));
-
-          final group = CatalogGroup(
-            id: "${src.addon.manifest.id}-${src.catalog.id}-${src.catalog.type}",
-            title: "${src.catalog.name ?? src.catalog.id} - $typeLabel",
-            items: results,
-          );
-
-          if (mounted) {
-            loadedGroups.add(group);
+        
+        if (mounted) {
+          final index = loadedGroups.indexWhere((g) => g.id == id);
+          if (index != -1) {
+            if (results.isNotEmpty) {
+              loadedGroups[index] = CatalogGroup(
+                id: id,
+                title: loadedGroups[index].title,
+                items: results,
+              );
+            } else {
+              loadedGroups.removeAt(index);
+            }
             setState(() {
               _catalogs = List.from(loadedGroups);
-              _loadingCatalogs =
-                  false; // Stop main loading indicator once first catalog is ready
             });
           }
         }
@@ -228,6 +249,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return PopScope(
       canPop: _query.trim().isEmpty && _expandedCatalogId == null,
       onPopInvoked: (didPop) {
@@ -252,8 +275,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 Positioned(
                   top: 0,
                   right: 0,
-                  width: MediaQuery.of(context).size.width * 0.66,
-                  height: MediaQuery.of(context).size.height * 0.66,
+                  width: isMobile ? MediaQuery.of(context).size.width : MediaQuery.of(context).size.width * 0.66,
+                  height: isMobile ? MediaQuery.of(context).size.height * 0.5 : MediaQuery.of(context).size.height * 0.66,
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 500),
                     child: Container(
@@ -261,62 +284,56 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       child: Stack(
                         children: [
                           Positioned.fill(
-                            child: CachedNetworkImage(
+                            child: WebSafeImage(
                               imageUrl: _heroInfo!.poster!,
                               fit: BoxFit.cover,
                               alignment: Alignment.topCenter,
-                              memCacheWidth: 600,
+                              filterQuality: FilterQuality.high,
+                              memCacheWidth: 1200,
                             ),
                           ),
-
-                          // Strong Horizontal fade to left
+                          
+                          // Custom opacity overlay based on settings
                           Positioned.fill(
                             child: Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.centerRight,
-                                  end: Alignment.centerLeft,
-                                  colors: [
-                                    Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.0),
-                                    Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.1),
-                                    Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.8),
-                                    Theme.of(context).scaffoldBackgroundColor,
-                                    Theme.of(context).scaffoldBackgroundColor,
-                                  ],
-                                  stops: const [
-                                    0.0,
-                                    0.4,
-                                    0.7,
-                                    0.9,
-                                    1.0,
-                                  ], // Reaches solid bg before container edge
+                              color: Theme.of(context).scaffoldBackgroundColor.withOpacity(SettingsService.instance.value.backdropOpacity),
+                            ),
+                          ),
+                          
+                          // Strong Horizontal fade to left (only on desktop/tablet)
+                          if (!isMobile)
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.centerRight,
+                                    end: Alignment.centerLeft,
+                                    colors: [
+                                      Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0),
+                                      Theme.of(context).scaffoldBackgroundColor.withOpacity(0.1),
+                                      Theme.of(context).scaffoldBackgroundColor.withOpacity(0.8),
+                                      Theme.of(context).scaffoldBackgroundColor,
+                                      Theme.of(context).scaffoldBackgroundColor,
+                                    ],
+                                    stops: const [0.0, 0.4, 0.7, 0.9, 1.0],
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
                           // Vertical fade to bottom
-                          Positioned.fill(
+                          Positioned(
+                            top: 0, left: 0, right: 0, bottom: -2,
                             child: Container(
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.0),
-                                    Theme.of(
-                                      context,
-                                    ).scaffoldBackgroundColor.withOpacity(0.8),
+                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0),
+                                    Theme.of(context).scaffoldBackgroundColor.withOpacity(isMobile ? 0.9 : 0.8),
                                     Theme.of(context).scaffoldBackgroundColor,
                                   ],
-                                  stops: const [0.0, 0.6, 1.0],
+                                  stops: isMobile ? const [0.0, 0.7, 1.0] : const [0.0, 0.6, 1.0],
                                 ),
                               ),
                             ),
@@ -430,9 +447,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                             controller: _searchController,
                                             focusNode: _searchFocusNode,
                                             readOnly:
-                                                (Platform.isWindows ||
+                                                (!kIsWeb && (Platform.isWindows ||
                                                     Platform.isMacOS ||
-                                                    Platform.isLinux ||
+                                                    Platform.isLinux) ||
                                                     isPortrait)
                                                 ? false
                                                 : !_searchActive,
@@ -500,10 +517,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                 );
 
                                 Widget searchResult = content;
-                                if (!(Platform.isWindows ||
+                                if (!(!kIsWeb && (Platform.isWindows ||
                                     Platform.isMacOS ||
-                                    Platform.isLinux ||
-                                    isPortrait)) {
+                                    Platform.isLinux)) &&
+                                    !isPortrait) {
                                   searchResult = GestureDetector(
                                     onTap: () {
                                       setState(() => _searchActive = true);
@@ -528,7 +545,39 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                                       ),
                                       const SizedBox(width: 16),
                                       Expanded(
-                                        child: Center(child: searchResult),
+                                        child: AnimatedSwitcher(
+                                          duration: const Duration(milliseconds: 300),
+                                          transitionBuilder: (Widget child, Animation<double> animation) {
+                                            return SizeTransition(
+                                              sizeFactor: animation,
+                                              axis: Axis.horizontal,
+                                              axisAlignment: 1.0,
+                                              child: FadeTransition(opacity: animation, child: child),
+                                            );
+                                          },
+                                          child: (!_searchActive && _query.isEmpty)
+                                              ? Align(
+                                                  key: const ValueKey('icon'),
+                                                  alignment: Alignment.centerRight,
+                                                  child: Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white.withOpacity(0.05),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                    child: IconButton(
+                                                      icon: const Icon(Icons.search, color: Colors.white70),
+                                                      onPressed: () {
+                                                        setState(() => _searchActive = true);
+                                                        _searchFocusNode.requestFocus();
+                                                      },
+                                                    ),
+                                                  ),
+                                                )
+                                              : SizedBox(
+                                                  key: const ValueKey('field'),
+                                                  child: searchResult,
+                                                ),
+                                        ),
                                       ),
                                       const SizedBox(width: 16),
                                       InkWell(
@@ -716,11 +765,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               group.catalogName,
               style: TextStyle(
                 color: Theme.of(context).colorScheme.secondary,
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             SizedBox(
               height: 255 * scale, // scaled height
               child: ListView.builder(
@@ -797,20 +846,23 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
         return RefreshIndicator(
           onRefresh: () => _loadAllCatalogs(forceRefresh: true),
-          child: ListView.builder(
-            padding: const EdgeInsets.only(bottom: 40, left: 24, right: 24),
-            itemCount: itemCount,
-          itemBuilder: (context, index) {
-            if (_loadingCatalogs && index == renderItems.length) {
-              return const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(32.0),
-                  child: BrandLoadingIndicator(color: Colors.white70),
-                ),
-              );
-            }
+          child: AnimationLimiter(
+            child: ListView.builder(
+              padding: const EdgeInsets.only(bottom: 40, left: 24, right: 24),
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                if (_loadingCatalogs && index == renderItems.length) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(32.0),
+                      child: BrandLoadingIndicator(color: Colors.white70),
+                    ),
+                  );
+                }
 
-            final item = renderItems[index];
+                final item = renderItems[index];
+                
+                Widget buildItem() {
 
             if (item is String && item == 'continue_watching') {
               if (_expandedCatalogId != null) return const SizedBox();
@@ -839,7 +891,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                             'Continue Watching',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -854,7 +906,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   SizedBox(
                     height: 255 * scale,
                     child: ListView.builder(
@@ -936,7 +988,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                               group.title,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -944,7 +996,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     isExpanded
                         ? GridView.builder(
                             clipBehavior: Clip.none,
@@ -1035,10 +1087,23 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 );
               },
             );
-          },
-        ),
-      );
-    },
+          }
+          
+          return AnimationConfiguration.staggeredList(
+            position: index,
+            duration: const Duration(milliseconds: 375),
+            child: SlideAnimation(
+              verticalOffset: 50.0,
+              child: FadeInAnimation(
+                child: buildItem(),
+              ),
+            ),
+          );
+        },
+      ),
+      ),
+    );
+  },
   );
 }
 }
@@ -1117,10 +1182,11 @@ class _PosterCardState extends State<PosterCard> {
                     children: [
                       if (widget.item.poster != null)
                         Positioned.fill(
-                          child: CachedNetworkImage(
+                          child: WebSafeImage(
                             imageUrl: widget.item.poster!,
                             fit: BoxFit.cover,
-                            memCacheWidth: 200,
+                            filterQuality: FilterQuality.high,
+                            memCacheWidth: 400,
                           ),
                         )
                       else
@@ -1248,10 +1314,11 @@ class _ContinueWatchingCardState extends State<ContinueWatchingCard> {
               Positioned.fill(
                 bottom: 4,
                 child: widget.entry.poster != null
-                    ? CachedNetworkImage(
+                    ? WebSafeImage(
                         imageUrl: widget.entry.poster!,
                         fit: BoxFit.cover,
-                        memCacheWidth: 200,
+                        filterQuality: FilterQuality.high,
+                        memCacheWidth: 400,
                       )
                     : Container(color: Colors.white10),
               ),

@@ -16,6 +16,8 @@ dependencies:
   plugin_platform_interface: ^2.1.8
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
+  window_manager: ^0.4.3
+  wakelock_plus: ^1.1.4
   bloc_event_transformers: ^2.0.0
   intl: ^0.20.2
   collection: ^1.19.1

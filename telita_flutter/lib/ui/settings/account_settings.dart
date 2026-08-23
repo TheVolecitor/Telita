@@ -23,7 +23,7 @@ class AccountSettingsScreen extends StatelessWidget {
 
             return ListView(
               padding: const EdgeInsets.all(32.0),
-              children: [
+              children: animateStaggeredList([
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Row(
@@ -51,7 +51,7 @@ class AccountSettingsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-              ],
+              ]),
             );
           },
         ),
